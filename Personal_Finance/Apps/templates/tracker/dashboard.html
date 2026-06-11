@@ -1,0 +1,330 @@
+{% extends "tracker/base.html" %}
+{% load static %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div x-data="dashboardApp()" x-init="init()" class="space-y-10 fade-in">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+        <h1 class="text-2xl font-bold gradient-text">Dashboard</h1>
+        <div class="flex flex-wrap gap-2">
+            <a href="{% url 'tracker:ledger' %}"
+               class="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 focus:ring-4 focus:ring-emerald-300/20 rounded-lg transition-all glow-emerald-strong">
+                + Add Transaction
+            </a>
+            <button type="button"
+                    data-modal-target="addSubcategoryModal"
+                    data-modal-toggle="addSubcategoryModal"
+                    class="px-4 py-2 text-sm font-medium text-gray-200 bg-gray-700/70 backdrop-blur-sm hover:bg-gray-600/70 focus:ring-4 focus:ring-gray-600/20 rounded-lg transition-all">
+                <span class="hidden sm:inline">Manage </span>Subcategories
+            </button>
+            <a href="{% url 'tracker:budget' %}"
+               class="px-4 py-2 text-sm font-medium text-gray-200 bg-gray-700/70 backdrop-blur-sm hover:bg-gray-600/70 focus:ring-4 focus:ring-gray-600/20 rounded-lg transition-all">
+                Set Budget
+            </a>
+        </div>
+    </div>
+
+    <div class="flex flex-wrap gap-3">
+        <select x-model="selectedYear" @change="loadDashboardData()"
+                class="bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 text-gray-300 text-sm rounded-lg focus:ring-emerald-500/30 focus:border-emerald-500/50 p-2.5 transition-colors">
+            <option value="0">Overall</option>
+            <template x-for="y in years" :key="y">
+                <option :value="y" x-text="y"></option>
+            </template>
+        </select>
+        <select x-model="selectedMonth" @change="loadDashboardData()"
+                class="bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 text-gray-300 text-sm rounded-lg focus:ring-emerald-500/30 focus:border-emerald-500/50 p-2.5 transition-colors">
+            <option value="0">All</option>
+            <template x-for="(m, i) in monthNames" :key="i">
+                <option :value="i + 1" x-text="m"></option>
+            </template>
+        </select>
+    </div>
+
+    <!-- Loading State -->
+    <div x-show="!loaded" class="flex justify-center py-20">
+        <svg class="animate-spin h-10 w-10 text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+    </div>
+
+    <div x-show="loaded" class="space-y-10">
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="glass-card stat-lift rounded-xl p-6 glow-emerald animate-slide-up animate-slide-up-1 scan-border">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Income</span>
+                    <svg class="w-5 h-5 text-emerald-400/80" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <div class="text-2xl font-bold text-emerald-400 font-number" x-text="`\u20b1${Number(stats.total_income).toLocaleString()}`"></div>
+                <div class="text-xs text-gray-500 mt-1">All time</div>
+            </div>
+
+            <div class="glass-card stat-lift rounded-xl p-6 glow-red animate-slide-up animate-slide-up-2 scan-border">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Expenses</span>
+                    <svg class="w-5 h-5 text-red-400/80" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                    </svg>
+                </div>
+                <div class="text-2xl font-bold text-red-400 font-number" x-text="`\u20b1${Number(stats.total_expenses).toLocaleString()}`"></div>
+                <div class="text-xs text-gray-500 mt-1">All time</div>
+            </div>
+
+            <div class="glass-card stat-lift rounded-xl p-6 glow-blue animate-slide-up animate-slide-up-3 scan-border">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Savings</span>
+                    <svg class="w-5 h-5 text-blue-400/80" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                    </svg>
+                </div>
+                <div class="text-2xl font-bold text-blue-400 font-number" x-text="`\u20b1${Number(stats.total_savings).toLocaleString()}`"></div>
+                <div class="text-xs text-gray-500 mt-1">All time</div>
+            </div>
+
+            <div class="glass-card stat-lift rounded-xl p-6 animate-slide-up animate-slide-up-4 scan-border">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Monthly Surplus</span>
+                    <svg class="w-5 h-5 text-gray-400/80" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                    </svg>
+                </div>
+                <div class="text-2xl font-bold font-number" :class="stats.current_surplus >= 0 ? 'text-emerald-400' : 'text-red-400'" x-text="`\u20b1${Number(stats.current_surplus).toLocaleString()}`"></div>
+                <div class="text-xs text-gray-500 mt-1" x-text="`${stats.month_name} ${stats.year}`"></div>
+            </div>
+        </div>
+
+        <!-- Current Month Income/Expense Mini Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div class="glass-card rounded-xl p-5 scan-border">
+                <div class="text-xs text-gray-500 font-semibold uppercase tracking-wider">Month Income</div>
+                <div class="text-lg font-bold text-emerald-400 font-number mt-1.5" x-text="`\u20b1${Number(stats.current_month_income).toLocaleString()}`"></div>
+            </div>
+            <div class="glass-card rounded-xl p-5 scan-border">
+                <div class="text-xs text-gray-500 font-semibold uppercase tracking-wider">Month Expenses</div>
+                <div class="text-lg font-bold text-red-400 font-number mt-1.5" x-text="`\u20b1${Number(stats.current_month_expenses).toLocaleString()}`"></div>
+            </div>
+            <div class="glass-card rounded-xl p-5 scan-border">
+                <div class="flex items-center justify-between">
+                    <div class="text-xs text-gray-500 font-semibold uppercase tracking-wider">Budget Used</div>
+                    <span class="text-sm font-bold font-number" :class="budgetUsedPercent > 100 ? 'text-red-400' : budgetUsedPercent > 75 ? 'text-yellow-400' : 'text-emerald-400'" x-text="`${budgetUsedPercent}%`"></span>
+                </div>
+                <div class="w-full bg-gray-700/50 rounded-full h-2 mt-3">
+                    <div class="h-2 rounded-full transition-all duration-700" :class="budgetUsedPercent > 100 ? 'bg-red-500 glow-red' : budgetUsedPercent > 75 ? 'bg-yellow-500' : 'bg-emerald-500 glow-emerald'" :style="`width: ${Math.min(budgetUsedPercent, 100)}%`"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="glass-card rounded-xl p-6">
+                <h3 class="text-sm font-semibold text-gray-100 uppercase tracking-wider mb-4">Income vs Expenses <span class="text-gray-500 font-normal normal-case">(Last 6 Months)</span></h3>
+                <div class="relative">
+                    <div x-show="!trendHasData" class="text-sm text-gray-500 text-center py-8">No chart data for this period.</div>
+                    <canvas id="dashboardTrendChart" class="w-full"></canvas>
+                </div>
+            </div>
+            <div class="glass-card rounded-xl p-6">
+                <h3 class="text-sm font-semibold text-gray-100 uppercase tracking-wider mb-4">Top Expense Categories</h3>
+                <div x-show="topExpenses.length === 0" class="text-sm text-gray-500 text-center py-8">No expenses this month.</div>
+                <template x-for="(item, idx) in topExpenses" :key="idx">
+                    <div class="flex items-center gap-3 py-2 border-b border-gray-700/30 last:border-b-0">
+                        <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white" :style="`background: ${categoryColors[idx % categoryColors.length]}`" x-text="idx + 1"></span>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm text-gray-200 truncate" x-text="item.subcategory_name"></div>
+                            <div class="text-xs text-gray-500" x-text="item.pillar_name"></div>
+                        </div>
+                        <span class="text-sm font-mono font-medium text-red-400" x-text="`\u20b1${Number(item.actual).toLocaleString()}`"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Recent Transactions -->
+        <div class="glass-card rounded-xl overflow-hidden">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-700/30">
+                <h3 class="text-sm font-semibold text-gray-100 uppercase tracking-wider">Recent Transactions</h3>
+                <a href="{% url 'tracker:ledger' %}" class="text-xs text-emerald-400 hover:text-emerald-300 transition-colors font-medium">View All →</a>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left text-gray-300">
+                    <thead class="text-xs text-gray-400 uppercase bg-gray-700/50">
+                        <tr>
+                            <th class="px-5 py-3">Date</th>
+                            <th class="px-5 py-3">Category</th>
+                            <th class="px-5 py-3">Subcategory</th>
+                            <th class="px-5 py-3">Detail</th>
+                            <th class="px-5 py-3 text-right">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="t in recentTransactions" :key="t.id">
+                            <tr class="border-b border-gray-700/30 hover:bg-gray-700/30 transition-colors">
+                                <td class="px-5 py-3 font-medium text-white whitespace-nowrap" x-text="t.date"></td>
+                                <td class="px-5 py-3">
+                                    <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full" :class="{
+                                        'bg-green-900/60 text-green-300': t.category_name === 'Income',
+                                        'bg-red-900/60 text-red-300': ['Expenses','Bills','Subscriptions'].includes(t.category_name),
+                                        'bg-blue-900/60 text-blue-300': t.category_name === 'Savings & Investments',
+                                        'bg-yellow-900/60 text-yellow-300': t.category_name === 'Debt',
+                                        'bg-purple-900/60 text-purple-300': t.category_name === 'Credit',
+                                    }" x-text="t.category_name"></span>
+                                </td>
+                                <td class="px-5 py-3 text-gray-400" x-text="t.subcategory_name"></td>
+                                <td class="px-5 py-3 max-w-xs truncate text-gray-400" x-text="t.detail"></td>
+                                <td class="px-5 py-3 text-right font-mono font-medium whitespace-nowrap"
+                                    :class="t.category_name === 'Income' ? 'text-emerald-400' : 'text-red-400'"
+                                    x-text="`\u20b1${Number(t.amount).toLocaleString()}`"></td>
+                            </tr>
+                        </template>
+                        <tr x-show="recentTransactions.length === 0">
+                            <td colspan="5" class="px-5 py-12 text-center text-gray-500">No transactions yet.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function dashboardApp() {
+    return {
+        loaded: false,
+        selectedYear: {{ current_year }},
+        selectedMonth: {{ current_month }},
+        monthNames: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+        years: {{ data_years|safe }},
+        stats: {
+            total_income: 0, total_expenses: 0, total_savings: 0,
+            current_month_income: 0, current_month_expenses: 0,
+            current_surplus: 0, year: 2026, month: 1, month_name: ''
+        },
+        recentTransactions: [],
+        topExpenses: [],
+        budgetUsedPercent: 0,
+        trendChartInstance: null,
+        trendHasData: false,
+        categoryColors: ['#3B82F6','#EF4444','#F59E0B','#10B981','#8B5CF6','#EC4899','#14B8A6','#F97316','#6366F1','#84CC16'],
+
+        async init() {
+            await this.loadDashboardData();
+        },
+
+        async loadDashboardData() {
+            try {
+                const y = parseInt(this.selectedYear) || 0;
+                const m = parseInt(this.selectedMonth) || 0;
+                const qp = (k, v) => v ? `${k}=${v}` : '';
+                const params = [qp('year', y), qp('month', m)].filter(Boolean).join('&');
+                const statsQS = params;
+                const txnQS = `page=1&page_size=5${params ? `&${params}` : ''}`;
+                const ovQS = params;
+                const trendQS = qp('year', y);
+                const prefix = s => s ? `?${s}` : '';
+                const [statsData, txnData, overviewData, trendData] = await Promise.all([
+                    apiFetch(`{% url "tracker:quick-stats" %}${prefix(statsQS)}`),
+                    apiFetch(`{% url "tracker:transaction-list" %}${prefix(txnQS)}`),
+                    apiFetch(`{% url "tracker:monthly-overview" %}${prefix(ovQS)}`),
+                    apiFetch(`{% url "tracker:analytics-income-expenses" %}${prefix(trendQS)}`),
+                ]);
+                this.stats = statsData;
+                this.stats.month_name = statsData.month ? (this.monthNames[statsData.month - 1] || '') : 'Overall';
+                this.recentTransactions = (txnData.transactions || []).slice(0, 5);
+                this.topExpenses = (overviewData.subcategory_breakdown || [])
+                    .filter(item => ['Expenses','Bills'].includes(item.pillar_name))
+                    .sort((a, b) => b.actual - a.actual)
+                    .slice(0, 5);
+                const totalBudgeted = overviewData.total_budgeted || 0;
+                const totalExpensesOv = overviewData.expense_total || 0;
+                this.budgetUsedPercent = totalBudgeted > 0 ? Math.round((totalExpensesOv / totalBudgeted) * 100) : 0;
+                this.renderTrendChart(trendData);
+                this.loaded = true;
+            } catch (e) {
+                showToast('Failed to load dashboard data', 'error');
+                this.loaded = true;
+            }
+        },
+
+        renderTrendChart(data) {
+            try {
+                if (this.trendChartInstance) { this.trendChartInstance.destroy(); this.trendChartInstance = null; }
+                const sm = parseInt(this.selectedMonth);
+                let months = data.months || [];
+                if (sm > 0) {
+                    const start = Math.max(1, sm - 5);
+                    months = months.filter(m => m.month >= start && m.month <= sm);
+                } else {
+                    months = months.filter(m => m.income > 0 || m.expenses > 0).slice(-6);
+                }
+                const hasNonZero = months.some(m => m.income > 0 || m.expenses > 0);
+                this.trendHasData = hasNonZero;
+                if (!hasNonZero) return;
+                const canvas = document.getElementById('dashboardTrendChart');
+                if (!canvas || !canvas.getContext) return;
+                this.trendChartInstance = new Chart(canvas, {
+                    type: 'bar',
+                    data: {
+                        labels: months.map(m => (m.month_name || '').substring(0, 3)),
+                        datasets: [
+                            {
+                                label: 'Income',
+                                data: months.map(m => m.income),
+                                backgroundColor: '#22C55E',
+                                borderRadius: 3,
+                            },
+                            {
+                                label: 'Expenses',
+                                data: months.map(m => m.expenses),
+                                backgroundColor: '#EF4444',
+                                borderRadius: 3,
+                            },
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        aspectRatio: 2,
+                        animation: {
+                            duration: 800,
+                            easing: 'easeOutQuart',
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                                titleColor: '#F9FAFB',
+                                bodyColor: '#D1D5DB',
+                                borderColor: 'rgba(75, 85, 99, 0.5)',
+                                borderWidth: 1,
+                                padding: 8,
+                                cornerRadius: 4,
+                            },
+                        },
+                        scales: {
+                            x: {
+                                grid: { display: false },
+                                ticks: { color: '#9CA3AF' },
+                            },
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: 'rgba(75, 85, 99, 0.3)' },
+                                ticks: { color: '#9CA3AF' },
+                            },
+                        },
+                    }
+                });
+            } catch(e) {
+                showToast('Failed to render chart', 'error');
+            }
+        },
+    };
+}
+</script>
+{% endblock %}

@@ -1,0 +1,146 @@
+{% extends "tracker/base.html" %}
+{% load static %}
+
+{% block title %}Monthly Overview{% endblock %}
+
+{% block content %}
+<div x-data="overviewApp()" class="fade-in">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold text-white">Monthly Overview</h1>
+    </div>
+
+    <div class="flex gap-3 mb-6">
+        <select x-model="overviewMonth"
+                class="bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 p-2.5">
+            <template x-for="(m, i) in monthNames" :key="i">
+                <option :value="i + 1" x-text="m"></option>
+            </template>
+        </select>
+        <select x-model="overviewYear"
+                class="bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 p-2.5">
+            <template x-for="y in years" :key="y">
+                <option :value="y" x-text="y"></option>
+            </template>
+        </select>
+    </div>
+
+    <!-- Loading State -->
+    <div x-show="!loaded" class="flex justify-center py-20">
+        <svg class="animate-spin h-10 w-10 text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+    </div>
+
+    <div x-show="loaded">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="p-5 bg-gray-800 rounded-xl border border-gray-700/50 shadow-lg">
+            <div class="text-sm text-gray-400 font-medium mb-1">Income</div>
+            <div class="text-2xl font-bold text-emerald-400" x-text="`\u20b1${Number(overviewData.income_total).toLocaleString()}`"></div>
+        </div>
+        <div class="p-5 bg-gray-800 rounded-xl border border-gray-700/50 shadow-lg">
+            <div class="text-sm text-gray-400 font-medium mb-1">Expenses</div>
+            <div class="text-2xl font-bold text-red-400" x-text="`\u20b1${Number(overviewData.expense_total).toLocaleString()}`"></div>
+        </div>
+        <div class="p-5 bg-gray-800 rounded-xl border border-gray-700/50 shadow-lg">
+            <div class="text-sm text-gray-400 font-medium mb-1">Savings</div>
+            <div class="text-2xl font-bold text-blue-400" x-text="`\u20b1${Number(overviewData.savings_total).toLocaleString()}`"></div>
+        </div>
+        <div class="p-5 bg-gray-800 rounded-xl border border-gray-700/50 shadow-lg">
+            <div class="text-sm text-gray-400 font-medium mb-1">Net Cash Flow</div>
+            <div class="text-2xl font-bold" :class="overviewData.net_cash_flow >= 0 ? 'text-emerald-400' : 'text-red-400'"
+                 x-text="`\u20b1${Number(overviewData.net_cash_flow).toLocaleString()}`"></div>
+        </div>
+    </div>
+
+    <div x-show="overviewData.debt_total > 0" class="p-5 bg-gray-800 rounded-xl border border-gray-700/50 shadow-lg mb-6">
+        <div class="text-sm text-gray-400 font-medium mb-1">Debt</div>
+        <div class="text-2xl font-bold text-orange-400" x-text="`\u20b1${Number(overviewData.debt_total).toLocaleString()}`"></div>
+    </div>
+
+    <div class="space-y-3">
+        <template x-for="item in overviewData.subcategory_breakdown" :key="item.subcategory_id">
+            <div class="p-4 bg-gray-800 rounded-xl border border-gray-700/50 shadow-lg">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="text-sm font-semibold text-gray-100 truncate" x-text="item.subcategory_name"></span>
+                        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-gray-700 text-gray-300 border border-gray-600/50" x-text="item.pillar_name"></span>
+                    </div>
+                    <div class="text-sm font-mono whitespace-nowrap ml-4">
+                        <span :class="item.actual > item.budgeted ? 'text-red-400' : 'text-emerald-400'"
+                              x-text="`\u20b1${Number(item.actual).toLocaleString()}`"></span>
+                        <span class="text-gray-500 mx-1">/</span>
+                        <span class="text-gray-400" x-text="`\u20b1${Number(item.budgeted).toLocaleString()}`"></span>
+                    </div>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-2.5 mb-2">
+                    <div class="h-2.5 rounded-full transition-all duration-500"
+                         :class="item.percentage > 100 ? 'bg-red-500' : item.percentage >= 75 ? 'bg-yellow-500' : 'bg-emerald-500'"
+                         :style="`width: ${Math.min(item.percentage, 100)}%`"></div>
+                </div>
+                <div class="flex justify-between text-xs">
+                    <span class="text-gray-400" x-text="`${Number(item.percentage).toFixed(1)}% used`"></span>
+                    <span :class="item.variance >= 0 ? 'text-emerald-400' : 'text-red-400'"
+                          x-text="`${item.variance >= 0 ? 'Left: \u20b1' : 'Over: \u20b1'}${Math.abs(item.variance).toLocaleString()}`"></span>
+                </div>
+            </div>
+        </template>
+        <div x-show="!overviewData.subcategory_breakdown || overviewData.subcategory_breakdown.length === 0"
+             class="p-8 text-center text-gray-500 bg-gray-800/50 rounded-xl border border-dashed border-gray-700">
+            No subcategory data for this month.
+        </div>
+    </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function overviewApp() {
+    return {
+        overviewMonth: new Date().getMonth() + 1,
+        overviewYear: new Date().getFullYear(),
+        overviewData: {
+            income_total: 0,
+            expense_total: 0,
+            savings_total: 0,
+            debt_total: 0,
+            net_cash_flow: 0,
+            subcategory_breakdown: []
+        },
+        loaded: false,
+        monthNames: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+        years: [],
+
+        init() {
+            const currentYear = new Date().getFullYear();
+            this.years = Array.from({length: 9}, (_, i) => currentYear - 4 + i);
+            this.$watch('overviewYear', () => this.loadMonthlyOverview());
+            this.$watch('overviewMonth', () => this.loadMonthlyOverview());
+            this.loadMonthlyOverview();
+        },
+
+        async loadMonthlyOverview() {
+            try {
+                const data = await apiFetch(
+                    `{% url "tracker:monthly-overview" %}?year=${this.overviewYear}&month=${this.overviewMonth}`
+                );
+                this.overviewData = data;
+                this.loaded = true;
+            } catch (e) {
+                showToast('Failed to load overview data', 'error');
+                this.overviewData = {
+                    income_total: 0,
+                    expense_total: 0,
+                    savings_total: 0,
+                    debt_total: 0,
+                    net_cash_flow: 0,
+                    subcategory_breakdown: []
+                };
+                this.loaded = true;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

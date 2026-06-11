@@ -1,0 +1,281 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}Analytics Dashboard{% endblock %}
+
+{% block content %}
+<div x-data="analyticsApp()" x-init="initCharts()" class="space-y-6 fade-in">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h1 class="text-2xl font-bold text-white tracking-tight">Analytics Dashboard</h1>
+        <select x-model="currentYear" @change="loadIncomeExpenseChart(); loadExpenseDispersalChart()"
+                class="bg-gray-800 border border-gray-700/50 text-gray-200 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 p-2.5 w-full sm:w-40">
+            <template x-for="y in years" :key="y">
+                <option :value="y" x-text="y"></option>
+            </template>
+        </select>
+    </div>
+
+    <!-- Loading State -->
+    <div x-show="!loaded" class="flex justify-center py-20">
+        <svg class="animate-spin h-10 w-10 text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+    </div>
+
+    <!-- Empty State -->
+    <div x-show="loaded && !hasData"
+         class="flex flex-col items-center justify-center py-20 text-gray-500">
+        <svg class="w-16 h-16 mb-4 text-gray-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+        <p class="text-lg font-medium mb-1">No analytics data yet</p>
+        <p class="text-sm">Add some transactions to see charts and insights.</p>
+    </div>
+
+    <div x-show="loaded && hasData" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="lg:col-span-2 p-5 bg-gray-800 border border-gray-700/50 rounded-xl shadow-lg">
+            <h3 class="text-lg font-semibold text-gray-100 mb-3">Income vs Expenses</h3>
+            <canvas id="incomeExpenseChart"></canvas>
+        </div>
+        <div class="p-5 bg-gray-800 border border-gray-700/50 rounded-xl shadow-lg">
+            <h3 class="text-lg font-semibold text-gray-100 mb-3">Expense Dispersal</h3>
+            <canvas id="expenseDispersalChart"></canvas>
+        </div>
+        <div class="p-5 bg-gray-800 border border-gray-700/50 rounded-xl shadow-lg">
+            <div class="h-full flex flex-col justify-center items-center text-gray-500 text-sm text-center">
+                <select x-model="currentMonth" @change="loadExpenseDispersalChart()"
+                        class="bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 p-2 w-full max-w-xs mb-2">
+                    <template x-for="(m, i) in monthNames" :key="i">
+                        <option :value="i + 1" x-text="m"></option>
+                    </template>
+                </select>
+                <p>Select a month to view expense breakdown by subcategory.</p>
+            </div>
+        </div>
+        <div class="lg:col-span-2 p-5 bg-gray-800 border border-gray-700/50 rounded-xl shadow-lg">
+            <h3 class="text-lg font-semibold text-gray-100 mb-3">Debt Payoff Trajectory</h3>
+            <canvas id="debtTrajectoryChart"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+Chart.defaults.color = '#9CA3AF';
+Chart.defaults.borderColor = 'rgba(75, 85, 99, 0.3)';
+Chart.defaults.font.family = 'system-ui, -apple-system, sans-serif';
+
+function analyticsApp() {
+    return {
+        years: Array.from({length: 6}, (_, i) => new Date().getFullYear() - 2 + i),
+        monthNames: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+        currentYear: {{ current_year }},
+        currentMonth: {{ current_month }},
+        incomeExpenseChartInstance: null,
+        expenseDispersalChartInstance: null,
+        debtTrajectoryChartInstance: null,
+        loaded: false,
+        hasData: false,
+
+        async initCharts() {
+            await this.loadIncomeExpenseChart();
+            await this.loadExpenseDispersalChart();
+            await this.loadDebtTrajectoryChart();
+            this.loaded = true;
+        },
+
+        async loadIncomeExpenseChart() {
+            try {
+                const resp = await fetch(`{% url "tracker:analytics-income-expenses" %}?year=${this.currentYear}`, {
+                    headers: {'X-CSRFToken': csrftoken}
+                });
+                const data = await resp.json();
+                this.hasData = (data.months || []).some(function(m) { return m.income > 0 || m.expenses > 0; });
+                const ctx = document.getElementById('incomeExpenseChart');
+                if (!ctx) return;
+                if (this.incomeExpenseChartInstance) this.incomeExpenseChartInstance.destroy();
+                this.incomeExpenseChartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.months.map(m => m.month_name),
+                        datasets: [
+                            {
+                                label: 'Income',
+                                data: data.months.map(m => m.income),
+                                backgroundColor: '#22C55E',
+                                borderRadius: 4,
+                            },
+                            {
+                                label: 'Expenses',
+                                data: data.months.map(m => m.expenses),
+                                backgroundColor: '#EF4444',
+                                borderRadius: 4,
+                            },
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: { usePointStyle: true, padding: 16 },
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                                titleColor: '#F9FAFB',
+                                bodyColor: '#D1D5DB',
+                                borderColor: 'rgba(75, 85, 99, 0.5)',
+                                borderWidth: 1,
+                                padding: 10,
+                                cornerRadius: 6,
+                            },
+                        },
+                        scales: {
+                            x: {
+                                grid: { color: 'rgba(75, 85, 99, 0.3)' },
+                                ticks: { color: '#9CA3AF' },
+                            },
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: 'rgba(75, 85, 99, 0.3)' },
+                                ticks: { color: '#9CA3AF' },
+                            },
+                        },
+                    }
+                });
+            } catch (e) { showToast('Failed to load income chart', 'error'); }
+        },
+
+        async loadExpenseDispersalChart() {
+            try {
+                const resp = await fetch(`{% url "tracker:analytics-expense-dispersal" %}?year=${this.currentYear}&month=${this.currentMonth}`, {
+                    headers: {'X-CSRFToken': csrftoken}
+                });
+                const data = await resp.json();
+                const ctx = document.getElementById('expenseDispersalChart');
+                if (!ctx) return;
+                if (this.expenseDispersalChartInstance) this.expenseDispersalChartInstance.destroy();
+                const palette = ['#3B82F6','#EF4444','#F59E0B','#10B981','#8B5CF6','#EC4899','#14B8A6','#F97316','#6366F1','#84CC16','#6B7280','#A855F7'];
+                this.expenseDispersalChartInstance = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: data.dispersal.map(d => d.label),
+                        datasets: [{
+                            data: data.dispersal.map(d => d.value),
+                            backgroundColor: palette.slice(0, data.dispersal.length),
+                            borderColor: '#1F2937',
+                            borderWidth: 2,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        cutout: '60%',
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    boxWidth: 12,
+                                    padding: 12,
+                                    color: '#9CA3AF',
+                                },
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                                titleColor: '#F9FAFB',
+                                bodyColor: '#D1D5DB',
+                                borderColor: 'rgba(75, 85, 99, 0.5)',
+                                borderWidth: 1,
+                                padding: 10,
+                                cornerRadius: 6,
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                        const pct = ((ctx.parsed / total) * 100).toFixed(1);
+                                        return ` ${ctx.label}: ₱${Number(ctx.parsed).toLocaleString()} (${pct}%)`;
+                                    }
+                                },
+                            },
+                        },
+                    }
+                });
+            } catch (e) { showToast('Failed to load expense chart', 'error'); }
+        },
+
+        async loadDebtTrajectoryChart() {
+            try {
+                const resp = await fetch('{% url "tracker:analytics-debt-trajectory" %}', {
+                    headers: {'X-CSRFToken': csrftoken}
+                });
+                const data = await resp.json();
+                const ctx = document.getElementById('debtTrajectoryChart');
+                if (!ctx) return;
+                if (this.debtTrajectoryChartInstance) this.debtTrajectoryChartInstance.destroy();
+                const debtNames = Object.keys(data.debts || {});
+                if (debtNames.length === 0) {
+                    this.debtTrajectoryChartInstance = null;
+                    return;
+                }
+                const colors = ['#EF4444','#F59E0B','#3B82F6','#8B5CF6','#EC4899','#14B8A6','#F97316','#6366F1'];
+                const allLabels = [];
+                const datasets = [];
+                for (const [idx, name] of debtNames.entries()) {
+                    const entries = (data.debts[name] || []).sort((a, b) => a.year - b.year || a.month - b.month);
+                    if (idx === 0) allLabels.push(...entries.map(e => e.label));
+                    datasets.push({
+                        label: name,
+                        data: entries.map(e => e.balance),
+                        fill: true,
+                        backgroundColor: colors[idx % colors.length] + '40',
+                        borderColor: colors[idx % colors.length],
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        pointBackgroundColor: colors[idx % colors.length],
+                    });
+                }
+                this.debtTrajectoryChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: allLabels, datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: { usePointStyle: true, padding: 16 },
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                                titleColor: '#F9FAFB',
+                                bodyColor: '#D1D5DB',
+                                borderColor: 'rgba(75, 85, 99, 0.5)',
+                                borderWidth: 1,
+                                padding: 10,
+                                cornerRadius: 6,
+                            },
+                        },
+                        scales: {
+                            x: {
+                                grid: { color: 'rgba(75, 85, 99, 0.3)' },
+                                ticks: { color: '#9CA3AF' },
+                            },
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: 'rgba(75, 85, 99, 0.3)' },
+                                ticks: { color: '#9CA3AF' },
+                            },
+                        },
+                        elements: {
+                            point: { radius: 3 },
+                        },
+                    }
+                });
+            } catch (e) { showToast('Failed to load debt chart', 'error'); }
+        },
+    };
+}
+</script>
+{% endblock %}

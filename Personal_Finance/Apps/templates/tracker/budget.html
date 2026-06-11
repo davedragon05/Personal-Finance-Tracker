@@ -1,0 +1,277 @@
+{% extends "tracker/base.html" %}
+{% load static %}
+
+{% block title %}12-Month Budget Matrix{% endblock %}
+
+{% block content %}
+<div x-data="budgetApp()" class="space-y-6 fade-in">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-white tracking-tight">12-Month Budget Matrix</h1>
+        <select x-model="budgetYear"
+                class="bg-gray-800 border border-gray-600 text-gray-200 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 p-2.5">
+            <template x-for="y in years" :key="y">
+                <option :value="y" x-text="y"></option>
+            </template>
+        </select>
+    </div>
+
+    <!-- Sticky Summary Bar -->
+    <div class="sticky top-16 z-30 p-4 bg-gray-800 border border-gray-700 rounded-lg shadow-lg -mx-1">
+        <div class="flex flex-wrap items-center gap-6 text-sm">
+            <div>
+                <span class="text-gray-400">Programmed Income</span>
+                <span class="ml-2 font-bold text-emerald-400"
+                      x-text="`\u20b1${Number(budgetSummary.income).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`"></span>
+            </div>
+            <div>
+                <span class="text-gray-400">Total Budgeted</span>
+                <span class="ml-2 font-bold text-blue-400"
+                      x-text="`\u20b1${Number(budgetSummary.total).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`"></span>
+            </div>
+            <div>
+                <span class="text-gray-400">Left to Budget</span>
+                <span class="ml-2 font-bold"
+                      :class="budgetSummary.left >= 0 ? 'text-emerald-400' : 'text-red-400'"
+                      x-text="`\u20b1${Number(budgetSummary.left).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div x-show="!loaded" class="flex justify-center py-12">
+        <svg class="animate-spin h-8 w-8 text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+    </div>
+
+    <!-- Scrollable Matrix Table -->
+    <div x-show="loaded" class="relative overflow-x-auto rounded-lg border border-gray-700 shadow-lg" style="max-height: calc(100vh - 280px);">
+        <table class="w-full text-sm text-left text-gray-300">
+            <thead class="text-xs text-gray-400 uppercase bg-gray-800/80 sticky top-0 z-20">
+                <tr>
+                    <th class="px-4 py-3 sticky left-0 bg-gray-800/80 z-20 min-w-[220px] border-r border-gray-700">
+                        Category / Subcategory
+                    </th>
+                    <template x-for="m in 12" :key="m">
+                        <th class="px-3 py-3 text-right min-w-[100px] border-r border-gray-700 last:border-r-0">
+                            <span x-text="monthAbbr[m - 1]"></span>
+                        </th>
+                    </template>
+                </tr>
+            </thead>
+            <tbody>
+                <template x-for="(pillarGroup, pgIdx) in budgetRows" :key="pillarGroup.pillar_id">
+                    <template x-for="(sc, scIdx) in pillarGroup.subcategories" :key="sc.id">
+                        <tr class="border-b border-gray-700/50 transition-colors"
+                            :class="{
+                                'bg-gray-800/40': scIdx === 0,
+                                'bg-gray-900/20 hover:bg-gray-700/30': scIdx > 0
+                            }">
+                            <!-- Category / Subcategory Name (left-sticky) -->
+                            <td class="px-4 py-2 sticky left-0 z-10 border-r border-gray-700 whitespace-nowrap"
+                                :class="{
+                                    'bg-gray-800/90 font-bold text-white': scIdx === 0,
+                                    'bg-gray-900/80 text-gray-300': scIdx > 0
+                                }">
+                                <template x-if="scIdx === 0">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0"></span>
+                                        <span x-text="pillarGroup.pillar_name"></span>
+                                    </div>
+                                </template>
+                                <template x-if="scIdx > 0">
+                                    <span class="pl-6 text-sm" x-text="sc.name"></span>
+                                </template>
+                            </td>
+
+                            <!-- 12 Month Cells -->
+                            <template x-for="m in 12" :key="m">
+                                <td class="px-3 py-1.5 text-right border-r border-gray-700/30 last:border-r-0 min-w-[100px]">
+                                    <!-- Display value (clickable) -->
+                                    <template x-if="getBudgetValue(sc.id, m) !== null">
+                                        <span @click="startEdit(sc.id, m, $event)"
+                                              x-show="!(editingBudget?.sc_id === sc.id && editingBudget?.month === m)"
+                                              class="cursor-pointer hover:bg-gray-700/60 px-1.5 py-1 rounded block font-mono text-sm text-emerald-300 transition-colors"
+                                              x-text="`\u20b1${Number(getBudgetValue(sc.id, m)).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`">
+                                        </span>
+                                    </template>
+                                    <!-- Empty cell (clickable) -->
+                                    <template x-if="getBudgetValue(sc.id, m) === null">
+                                        <span @click="startEdit(sc.id, m, $event)"
+                                              x-show="!(editingBudget?.sc_id === sc.id && editingBudget?.month === m)"
+                                              class="cursor-pointer hover:bg-gray-700/60 px-1.5 py-1 rounded block font-mono text-sm text-gray-600 transition-colors">
+                                            &mdash;
+                                        </span>
+                                    </template>
+                                    <!-- Editing input -->
+                                    <input x-show="editingBudget?.sc_id === sc.id && editingBudget?.month === m"
+                                           x-ref="budgetInput"
+                                           x-model="budgetInputValue"
+                                           @blur="saveBudgetCell()"
+                                           @keydown.enter="saveBudgetCell()"
+                                           @keydown.escape="cancelEdit()"
+                                           @click.stop
+                                           type="number"
+                                           step="0.01"
+                                           placeholder="0.00"
+                                           class="w-full px-1.5 py-1 text-right text-sm font-mono bg-gray-700 border border-emerald-500 rounded focus:outline-none focus:ring-1 focus:ring-emerald-400 text-white placeholder-gray-500">
+                                </td>
+                            </template>
+                        </tr>
+                    </template>
+                </template>
+
+                <!-- Empty state -->
+                <tr x-show="budgetRows.length === 0">
+                    <td colspan="13" class="px-4 py-12 text-center text-gray-500">
+                        No subcategories found. Create subcategories first to build your budget matrix.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Legend / Footer -->
+    <div class="flex items-center gap-4 text-xs text-gray-500">
+        <span>Click any cell to edit the budget amount</span>
+        <span class="text-emerald-500">Enter</span><span>save</span>
+        <span class="text-gray-400">Esc</span><span>cancel</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function budgetApp() {
+    return {
+        // --- Props ---
+        budgetYear: new Date().getFullYear(),
+        budgetRows: [],
+        budgetTargets: [],
+        budgetSummary: { income: 0, total: 0, left: 0 },
+        editingBudget: null,
+        budgetInputValue: '',
+        allSubcategories: [],
+        years: [],
+        monthAbbr: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+        loaded: false,
+
+        // --- Init ---
+        async init() {
+            this.years = Array.from({length: 9}, (_, i) => new Date().getFullYear() - 4 + i);
+            this.$watch('budgetYear', () => this.loadBudgetMatrix());
+            try {
+                const data = await apiFetch('{% url "tracker:subcategory-list" %}');
+                this.allSubcategories = data.subcategories || [];
+                await this.loadBudgetMatrix();
+            } catch (e) {
+                showToast('Failed to load budget data', 'error');
+            }
+            this.loaded = true;
+        },
+
+        // --- Methods ---
+        async loadBudgetMatrix() {
+            this.buildBudgetRows();
+            try {
+                const data = await apiFetch(`{% url "tracker:budget-target-list" %}?year=${this.budgetYear}`);
+                this.budgetTargets = data.budgets || [];
+                this.updateBudgetSummary();
+            } catch (e) {
+                showToast('Failed to load budget targets', 'error');
+            }
+        },
+
+        buildBudgetRows() {
+            const pillarMap = {};
+            for (const sc of this.allSubcategories) {
+                if (!pillarMap[sc.pillar_id]) {
+                    pillarMap[sc.pillar_id] = {
+                        pillar_id: sc.pillar_id,
+                        pillar_name: sc.pillar_name,
+                        subcategories: []
+                    };
+                }
+                pillarMap[sc.pillar_id].subcategories.push(sc);
+            }
+            this.budgetRows = Object.values(pillarMap);
+        },
+
+        getBudgetValue(subcategoryId, month) {
+            const target = this.budgetTargets.find(
+                t => t.subcategory_id === subcategoryId && t.month === month && t.year === this.budgetYear
+            );
+            return target ? target.budgeted_amount : null;
+        },
+
+        updateBudgetSummary() {
+            const targets = this.budgetTargets || [];
+            let income = 0;
+            let total = 0;
+            for (const t of targets) {
+                const sc = this.allSubcategories.find(s => s.id === t.subcategory_id);
+                if (sc && sc.pillar_name === 'Income') {
+                    income += t.budgeted_amount;
+                }
+                total += t.budgeted_amount;
+            }
+            this.budgetSummary = { income, total, left: income - total };
+        },
+
+        startEdit(scId, month, event) {
+            this.editingBudget = { sc_id: scId, month: month };
+            const val = this.getBudgetValue(scId, month);
+            this.budgetInputValue = val !== null ? String(val) : '';
+            this.$nextTick(() => {
+                const inputs = this.$el.querySelectorAll('input[x-ref="budgetInput"]');
+                for (const el of inputs) {
+                    if (el.offsetParent !== null) {
+                        el.focus();
+                        el.select();
+                        break;
+                    }
+                }
+            });
+        },
+
+        cancelEdit() {
+            this.editingBudget = null;
+            this.budgetInputValue = '';
+        },
+
+        async saveBudgetCell() {
+            if (!this.editingBudget) return;
+            const { sc_id, month } = this.editingBudget;
+            const value = parseFloat(this.budgetInputValue) || 0;
+            this.editingBudget = null;
+            this.budgetInputValue = '';
+            try {
+                const data = await apiFetch('{% url "tracker:budget-target-upsert" %}', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        subcategory_id: sc_id,
+                        year: this.budgetYear,
+                        month: month,
+                        budgeted_amount: value,
+                    })
+                });
+                const idx = this.budgetTargets.findIndex(
+                    t => t.subcategory_id === sc_id && t.month === month && t.year === this.budgetYear
+                );
+                if (idx >= 0) {
+                    this.budgetTargets[idx] = data.budget;
+                } else {
+                    this.budgetTargets.push(data.budget);
+                }
+                this.updateBudgetSummary();
+            } catch (e) {
+                showToast('Failed to save budget target', 'error');
+            }
+        },
+    };
+}
+</script>
+{% endblock %}

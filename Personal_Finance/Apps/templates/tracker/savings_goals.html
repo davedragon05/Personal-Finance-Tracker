@@ -1,0 +1,427 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}Savings Goals{% endblock %}
+
+{% block content %}
+<div x-data="savingsGoalsApp()" x-init="init()" x-cloak>
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+        <h1 class="text-2xl font-bold text-white">Savings Goals</h1>
+        <button @click="openAddModal()"
+                class="px-5 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 focus:ring-4 focus:ring-emerald-300/30 rounded-lg transition-colors">
+            + New Goal
+        </button>
+    </div>
+
+    <!-- Loading Skeleton -->
+    <div x-show="loading" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <template x-for="i in 3" :key="i">
+            <div class="bg-gray-800 rounded-lg border border-gray-700/50 p-6 animate-pulse">
+                <div class="h-5 bg-gray-700 rounded w-3/4 mb-3"></div>
+                <div class="h-2 bg-gray-700 rounded-full mb-4"></div>
+                <div class="h-4 bg-gray-700 rounded w-1/2 mb-2"></div>
+                <div class="h-4 bg-gray-700 rounded w-2/3"></div>
+            </div>
+        </template>
+    </div>
+
+    <!-- Goals Grid -->
+    <div x-show="!loading" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <template x-for="goal in goals" :key="goal.id">
+            <div class="bg-gray-800 rounded-lg border border-gray-700/50 p-6 card-hover transition-all duration-200">
+                <div class="flex items-start justify-between mb-3">
+                    <div>
+                        <h3 class="text-lg font-semibold text-white" x-text="goal.subcategory_name"></h3>
+                        <p class="text-xs text-gray-500 mt-0.5" x-text="goal.pillar_name"></p>
+                    </div>
+                    <div class="flex gap-1">
+                        <button @click="openEditModal(goal)"
+                                class="p-1.5 text-gray-400 hover:text-emerald-400 transition-colors rounded-lg hover:bg-gray-700/50">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                            </svg>
+                        </button>
+                        <button @click="deleteGoal(goal)"
+                                class="p-1.5 text-gray-400 hover:text-red-400 transition-colors rounded-lg hover:bg-gray-700/50">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="mb-3">
+                    <div class="flex items-center justify-between text-sm mb-1.5">
+                        <span class="text-gray-400 font-medium" x-text="goal.progress + '%'"></span>
+                        <span class="text-emerald-400 font-semibold">₱<span x-text="Number(goal.current_amount).toLocaleString()"></span></span>
+                    </div>
+                    <div class="w-full bg-gray-700 rounded-full h-2.5 overflow-hidden">
+                        <div class="h-full rounded-full transition-all duration-700 ease-out"
+                             :style="'width: ' + goal.progress + '%'"
+                             :class="goal.progress >= 100 ? 'bg-emerald-500' : 'bg-emerald-600'">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-1.5 text-sm">
+                    <div class="flex justify-between text-gray-400">
+                        <span>Target</span>
+                        <span class="text-gray-200 font-medium">₱<span x-text="Number(goal.target_goal).toLocaleString()"></span></span>
+                    </div>
+                    <div class="flex justify-between text-gray-400">
+                        <span>Monthly target</span>
+                        <span class="text-gray-200 font-medium">₱<span x-text="Number(goal.monthly_contribution_target).toLocaleString()"></span></span>
+                    </div>
+                    <div class="flex justify-between text-gray-400 pt-1 border-t border-gray-700/50">
+                        <span>Remaining</span>
+                        <span class="text-yellow-400 font-medium">₱<span x-text="Number(Math.max(goal.target_goal - goal.current_amount, 0)).toLocaleString()"></span></span>
+                    </div>
+                </div>
+
+                <!-- Contributions Section -->
+                <div class="mt-4 pt-3 border-t border-gray-700/30">
+                    <button @click="toggleContributions(goal)"
+                            class="flex items-center justify-between w-full text-xs text-gray-500 hover:text-gray-300 transition-colors">
+                        <span>Contributions (<span x-text="goal.contributions.length"></span>)</span>
+                        <svg class="w-3.5 h-3.5 transition-transform duration-200"
+                             :class="openContributions.has(goal.id) ? 'rotate-180' : ''"
+                             fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+                    <div x-show="openContributions.has(goal.id)"
+                         x-collapse.duration.200ms
+                         class="mt-2 space-y-1.5 max-h-48 overflow-y-auto">
+                        <template x-for="c in goal.contributions" :key="c.id">
+                            <div class="flex items-center justify-between px-2 py-1.5 rounded hover:bg-gray-700/40 group text-xs">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-gray-400" x-text="c.date"></span>
+                                    <span class="text-gray-300" x-text="c.note || ''"></span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-emerald-400 font-medium">+₱<span x-text="Number(c.amount).toLocaleString()"></span></span>
+                                    <button @click="deleteContribution(c, goal)"
+                                            class="text-red-500/60 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                                            title="Delete contribution">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="goal.contributions.length === 0" class="text-xs text-gray-600 text-center py-2">
+                            No contributions yet.
+                        </div>
+                    </div>
+                    <button @click="openContributionModal(goal)"
+                            class="mt-2 w-full px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-900/30 hover:bg-emerald-900/50 border border-emerald-800/30 rounded-lg transition-colors">
+                        + Log Contribution
+                    </button>
+                </div>
+            </div>
+        </template>
+
+        <!-- Empty State -->
+        <div x-show="goals.length === 0"
+             class="col-span-full flex flex-col items-center justify-center py-16 text-gray-500">
+            <svg class="w-16 h-16 mb-4 text-gray-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z"/>
+                <path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z"/>
+            </svg>
+            <p class="text-lg font-medium mb-1">No savings goals yet</p>
+            <p class="text-sm">Create your first savings goal to start tracking progress!</p>
+        </div>
+    </div>
+
+    <!-- Add/Edit Goal Modal -->
+    <div id="goalModal" tabindex="-1" aria-hidden="true"
+         class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full">
+        <div class="relative p-4 w-full max-w-lg max-h-full">
+            <div class="relative bg-gray-800 rounded-lg shadow-lg border border-gray-700/50">
+                <div class="flex items-center justify-between p-4 border-b border-gray-700/50">
+                    <h3 class="text-lg font-semibold text-white" x-text="editingGoal ? 'Edit Goal' : 'New Goal'"></h3>
+                    <button type="button" @click="closeModal()"
+                            class="text-gray-400 bg-transparent hover:bg-gray-700 hover:text-white rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center">
+                        <svg class="w-3 h-3" fill="none" viewBox="0 0 14 14">
+                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                        </svg>
+                    </button>
+                </div>
+                <form @submit.prevent="submitGoal()" class="p-4">
+                    <div class="grid gap-4 mb-4">
+                        <div>
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Category</label>
+                            <select x-model="form.category_id" @change="form.subcategory_id = ''" required
+                                    class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5">
+                                <option value="">Select category</option>
+                                <template x-for="p in pillars" :key="p.id">
+                                    <option :value="p.id" x-text="p.display_name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Subcategory</label>
+                            <select x-model="form.subcategory_id" required
+                                    class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5">
+                                <option value="">Select subcategory</option>
+                                <template x-for="sc in filteredSubcategories" :key="sc.id">
+                                    <option :value="sc.id" x-text="sc.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Target Goal (₱)</label>
+                            <input type="number" step="0.01" x-model="form.target_goal" required
+                                   class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5">
+                        </div>
+                        <div>
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Starting Amount (₱)</label>
+                            <input type="number" step="0.01" x-model="form.starting_amount"
+                                   class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5">
+                        </div>
+                        <div>
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Monthly Contribution Target (₱)</label>
+                            <input type="number" step="0.01" x-model="form.monthly_contribution_target" required
+                                   class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5">
+                        </div>
+                    </div>
+                    <button type="submit" :disabled="submitting"
+                            class="w-full px-5 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 focus:ring-4 focus:ring-emerald-300/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span x-show="!submitting" x-text="editingGoal ? 'Update Goal' : 'Create Goal'"></span>
+                        <span x-show="submitting">Saving...</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contribution Modal -->
+    <div id="contributionModal" tabindex="-1" aria-hidden="true"
+         class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full">
+        <div class="relative p-4 w-full max-w-md max-h-full">
+            <div class="relative bg-gray-800 rounded-lg shadow-lg border border-gray-700/50">
+                <div class="flex items-center justify-between p-4 border-b border-gray-700/50">
+                    <h3 class="text-lg font-semibold text-white">Log Contribution</h3>
+                    <button type="button" @click="closeContributionModal()"
+                            class="text-gray-400 bg-transparent hover:bg-gray-700 hover:text-white rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center">
+                        <svg class="w-3 h-3" fill="none" viewBox="0 0 14 14">
+                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                        </svg>
+                    </button>
+                </div>
+                <form @submit.prevent="logContribution()" class="p-4">
+                    <div class="mb-4">
+                        <p class="text-sm text-gray-400 mb-4">
+                            Adding contribution to: <span class="text-white font-medium" x-text="contributionGoal?.subcategory_name"></span>
+                        </p>
+                    </div>
+                    <div class="grid gap-4 mb-4">
+                        <div>
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Amount (₱)</label>
+                            <input type="number" step="0.01" x-model="contributionForm.amount" required
+                                   class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5">
+                        </div>
+                        <div>
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Date</label>
+                            <input type="date" x-model="contributionForm.date"
+                                   class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5">
+                        </div>
+                        <div>
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Note (optional)</label>
+                            <input type="text" x-model="contributionForm.note" placeholder="e.g. Monthly savings"
+                                   class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5">
+                        </div>
+                    </div>
+                    <button type="submit" :disabled="contributing"
+                            class="w-full px-5 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 focus:ring-4 focus:ring-emerald-300/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span x-show="!contributing">Log Contribution</span>
+                        <span x-show="contributing">Saving...</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function savingsGoalsApp() {
+    return {
+        goals: [],
+        pillars: [],
+        allSubcategories: [],
+        editingGoal: null,
+        submitting: false,
+        loading: true,
+        form: { category_id: '', subcategory_id: '', target_goal: '', starting_amount: 0, monthly_contribution_target: '' },
+        openContributions: new Set(),
+        contributionGoal: null,
+        contributionForm: { amount: '', date: '', note: '' },
+        contributing: false,
+
+        get filteredSubcategories() {
+            if (!this.form.category_id) return [];
+            return (this.allSubcategories || []).filter(
+                sc => sc.pillar_id === parseInt(this.form.category_id)
+            );
+        },
+
+        async init() {
+            try {
+                const [pData, scData] = await Promise.all([
+                    apiFetch('{% url "tracker:pillar-list" %}'),
+                    apiFetch('{% url "tracker:subcategory-list" %}')
+                ]);
+                this.pillars = pData.pillars;
+                this.allSubcategories = scData.subcategories;
+                await this.loadGoals();
+            } catch(e) {
+                console.error('Init error:', e);
+                showToast('Failed to load data', 'error');
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        loadGoals() {
+            return apiFetch('{% url "tracker:savings-goal-list" %}').then(data => {
+                this.goals = data.goals;
+            }).catch(e => {
+                console.error('Failed to load goals:', e);
+                showToast('Failed to load goals', 'error');
+            });
+        },
+
+        resetForm() {
+            this.form = { category_id: '', subcategory_id: '', target_goal: '', starting_amount: 0, monthly_contribution_target: '' };
+        },
+
+        openAddModal() {
+            this.editingGoal = null;
+            this.resetForm();
+            this.openModal();
+        },
+
+        openEditModal(goal) {
+            this.editingGoal = goal;
+            this.form = {
+                category_id: String(goal.subcategory_id ? this.getCategoryId(goal.subcategory_id) : ''),
+                subcategory_id: String(goal.subcategory_id),
+                target_goal: goal.target_goal,
+                starting_amount: goal.starting_amount,
+                monthly_contribution_target: goal.monthly_contribution_target,
+            };
+            this.openModal();
+        },
+
+        getCategoryId(subcategoryId) {
+            var sc = (this.allSubcategories || []).find(function(s) { return s.id === subcategoryId; });
+            return sc ? sc.pillar_id : '';
+        },
+
+        openModal() {
+            try {
+                this._modal = new Modal(document.getElementById('goalModal'));
+                this._modal.show();
+            } catch(e) { console.error('Modal error:', e); }
+        },
+
+        closeModal() {
+            try {
+                if (this._modal) this._modal.hide();
+            } catch(e) { console.error('Modal close error:', e); }
+        },
+
+        submitGoal() {
+            this.submitting = true;
+            var isEdit = !!this.editingGoal;
+            var data = {
+                subcategory_id: parseInt(this.form.subcategory_id),
+                target_goal: parseFloat(this.form.target_goal),
+                starting_amount: parseFloat(this.form.starting_amount || 0),
+                monthly_contribution_target: parseFloat(this.form.monthly_contribution_target),
+            };
+            var url = isEdit ? '/api/savings-goals/' + this.editingGoal.id + '/' : '{% url "tracker:savings-goal-create" %}';
+            var method = isEdit ? 'PATCH' : 'POST';
+            return apiFetch(url, { method, body: JSON.stringify(data) }).then(() => {
+                this.closeModal();
+                this.loadGoals();
+                showToast(isEdit ? 'Goal updated' : 'Goal created', 'success');
+            }).catch(e => {
+                showToast(e.message || 'Failed to save goal', 'error');
+            }).finally(() => {
+                this.submitting = false;
+            });
+        },
+
+        deleteGoal(goal) {
+            if (!confirm('Delete "' + goal.subcategory_name + '" goal?')) return;
+            apiFetch('/api/savings-goals/' + goal.id + '/', { method: 'DELETE' }).then(() => {
+                this.loadGoals();
+                showToast('Goal deleted', 'success');
+            }).catch(e => {
+                showToast(e.message || 'Failed to delete goal', 'error');
+            });
+        },
+
+        toggleContributions(goal) {
+            if (this.openContributions.has(goal.id)) {
+                this.openContributions.delete(goal.id);
+            } else {
+                this.openContributions.add(goal.id);
+            }
+        },
+
+        openContributionModal(goal) {
+            this.contributionGoal = goal;
+            var today = new Date().toISOString().split('T')[0];
+            this.contributionForm = { amount: '', date: today, note: '' };
+            try {
+                this._contributionModal = new Modal(document.getElementById('contributionModal'));
+                this._contributionModal.show();
+            } catch(e) { console.error('Contribution modal error:', e); }
+        },
+
+        closeContributionModal() {
+            try {
+                if (this._contributionModal) this._contributionModal.hide();
+            } catch(e) { console.error('Contribution modal close error:', e); }
+            this.contributionGoal = null;
+        },
+
+        logContribution() {
+            if (!this.contributionGoal) return;
+            this.contributing = true;
+            var data = {
+                amount: parseFloat(this.contributionForm.amount),
+                date: this.contributionForm.date || new Date().toISOString().split('T')[0],
+                note: this.contributionForm.note || '',
+            };
+            var url = '/api/savings-goals/' + this.contributionGoal.id + '/contributions/';
+            return apiFetch(url, { method: 'POST', body: JSON.stringify(data) }).then(() => {
+                this.closeContributionModal();
+                this.loadGoals();
+                showToast('Contribution logged', 'success');
+            }).catch(e => {
+                showToast(e.message || 'Failed to log contribution', 'error');
+            }).finally(() => {
+                this.contributing = false;
+            });
+        },
+
+        deleteContribution(contribution, goal) {
+            if (!confirm('Delete this contribution of ₱' + Number(contribution.amount).toLocaleString() + '?')) return;
+            apiFetch('/api/contributions/' + contribution.id + '/', { method: 'DELETE' }).then(() => {
+                this.loadGoals();
+                showToast('Contribution deleted', 'success');
+            }).catch(e => {
+                showToast(e.message || 'Failed to delete contribution', 'error');
+            });
+        }
+    };
+}
+</script>
+{% endblock %}

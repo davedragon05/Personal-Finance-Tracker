@@ -1,0 +1,344 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}Transaction Ledger{% endblock %}
+
+{% block content %}
+<div x-data="ledgerApp()" x-cloak>
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold text-white">Transaction Ledger</h1>
+        <button @click="openAddTransactionModal()"
+                class="px-5 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 focus:ring-4 focus:ring-emerald-300/30 rounded-lg transition-colors">
+            + Add Transaction
+        </button>
+    </div>
+
+    <!-- Filters -->
+    <div class="flex flex-wrap gap-3 mb-6">
+        <select x-model="ledgerFilters.category_id" @change="loadTransactions()"
+                class="bg-gray-800 border border-gray-700/50 text-gray-300 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 p-2.5">
+            <option value="">All Categories</option>
+            <template x-for="p in pillars" :key="p.id">
+                <option :value="p.id" x-text="p.display_name"></option>
+            </template>
+        </select>
+        <select x-model="ledgerFilters.year" @change="loadTransactions()"
+                class="bg-gray-800 border border-gray-700/50 text-gray-300 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 p-2.5">
+            <option value="">All Years</option>
+            <template x-for="y in years" :key="y">
+                <option :value="y" x-text="y"></option>
+            </template>
+        </select>
+        <select x-model="ledgerFilters.month" @change="loadTransactions()"
+                class="bg-gray-800 border border-gray-700/50 text-gray-300 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 p-2.5">
+            <option value="">All Months</option>
+            <template x-for="(m, i) in monthNames" :key="i">
+                <option :value="i + 1" x-text="m"></option>
+            </template>
+        </select>
+        <input type="text" x-model="ledgerFilters.search" @input.debounce="loadTransactions()" placeholder="Search transactions..."
+               class="bg-gray-800 border border-gray-700/50 text-gray-300 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 p-2.5 flex-1 min-w-[200px] placeholder-gray-500">
+    </div>
+
+    <!-- Table Card -->
+    <div class="bg-gray-800 rounded-lg border border-gray-700/50 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left text-gray-300">
+                <thead class="text-xs text-gray-400 uppercase bg-gray-700">
+                    <tr>
+                        <th class="px-6 py-3">Date</th>
+                        <th class="px-6 py-3">Category</th>
+                        <th class="px-6 py-3">Subcategory</th>
+                        <th class="px-6 py-3">Detail</th>
+                        <th class="px-6 py-3 text-right">Amount</th>
+                        <th class="px-6 py-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="t in transactions" :key="t.id">
+                        <tr class="border-b border-gray-700/50 hover:bg-gray-700/40 transition-colors">
+                            <td class="px-6 py-4 font-medium text-white whitespace-nowrap" x-text="t.date"></td>
+                            <td class="px-6 py-4">
+                                <span class="inline-block px-2.5 py-1 text-xs font-semibold rounded-full" :class="{
+                                    'bg-green-900/60 text-green-300': t.category_name === 'Income',
+                                    'bg-red-900/60 text-red-300': ['Expenses','Bills','Subscriptions'].includes(t.category_name),
+                                    'bg-blue-900/60 text-blue-300': t.category_name === 'Savings & Investments',
+                                    'bg-yellow-900/60 text-yellow-300': t.category_name === 'Debt',
+                                    'bg-purple-900/60 text-purple-300': t.category_name === 'Credit',
+                                }" x-text="t.category_name"></span>
+                            </td>
+                            <td class="px-6 py-4 text-gray-400" x-text="t.subcategory_name"></td>
+                            <td class="px-6 py-4 max-w-xs truncate text-gray-400" x-text="t.detail"></td>
+                            <td class="px-6 py-4 text-right font-mono font-medium whitespace-nowrap"
+                                :class="t.category_name === 'Income' ? 'text-emerald-400' : 'text-red-400'"
+                                x-text="`₱${Number(t.amount).toLocaleString()}`"></td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-2">
+                                    <button @click="openEditTransactionModal(t)"
+                                            class="text-emerald-400 hover:text-emerald-300 font-medium text-xs transition-colors">
+                                        Edit
+                                    </button>
+                                    <button @click="deleteTransaction(t.id)"
+                                            class="text-red-400 hover:text-red-300 font-medium text-xs transition-colors">
+                                        Delete
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="transactions.length === 0">
+                        <td colspan="6" class="px-6 py-12 text-center text-gray-500">No transactions found.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="flex items-center justify-between pt-4" x-show="totalPages > 0">
+        <span class="text-sm text-gray-400">
+            Page <span x-text="currentPage" class="text-white font-medium"></span> of <span x-text="totalPages" class="text-white font-medium"></span>
+        </span>
+        <div class="flex gap-2">
+            <button @click="changePage(currentPage - 1)" :disabled="currentPage <= 1"
+                    class="px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    :class="currentPage <= 1 ? 'border-gray-700/50 text-gray-600' : 'border-gray-700/50 text-gray-300 hover:bg-gray-700 hover:text-white'">
+                Prev
+            </button>
+            <button @click="changePage(currentPage + 1)" :disabled="currentPage >= totalPages"
+                    class="px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    :class="currentPage >= totalPages ? 'border-gray-700/50 text-gray-600' : 'border-gray-700/50 text-gray-300 hover:bg-gray-700 hover:text-white'">
+                Next
+            </button>
+        </div>
+    </div>
+
+    <!-- Add Transaction Modal (Flowbite) -->
+    <div id="addTransactionModal" tabindex="-1" aria-hidden="true"
+         class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full">
+        <div class="relative p-4 w-full max-w-lg max-h-full">
+            <div class="relative bg-gray-800 rounded-lg shadow-lg border border-gray-700/50">
+                <div class="flex items-center justify-between p-4 border-b border-gray-700/50">
+                    <h3 class="text-lg font-semibold text-white" x-text="editingId ? 'Edit Transaction' : 'Add Transaction'"></h3>
+                    <button type="button" @click="closeAddTransactionModal()"
+                            class="text-gray-400 bg-transparent hover:bg-gray-700 hover:text-white rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center">
+                        <svg class="w-3 h-3" fill="none" viewBox="0 0 14 14">
+                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                        </svg>
+                    </button>
+                </div>
+                <form @submit.prevent="submitTransaction()" class="p-4">
+                    <div class="grid gap-4 mb-4">
+                        <div>
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Date</label>
+                            <input type="date" x-model="txForm.date" required
+                                   class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5">
+                        </div>
+                        <div>
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Category</label>
+                            <select x-model="txForm.category_id" @change="txForm.subcategory_id = ''; loadFormSubcategories()" required
+                                    class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5">
+                                <option value="">Select category</option>
+                                <template x-for="p in pillars" :key="p.id">
+                                    <option :value="p.id" x-text="p.display_name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Subcategory</label>
+                            <select x-model="txForm.subcategory_id" required
+                                    class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5">
+                                <option value="">Select subcategory</option>
+                                <template x-for="sc in filteredFormSubcategories" :key="sc.id">
+                                    <option :value="sc.id" x-text="sc.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Amount (₱)</label>
+                            <input type="number" step="0.01" x-model="txForm.amount" required
+                                   class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5">
+                        </div>
+                        <div>
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Detail</label>
+                            <textarea x-model="txForm.detail" rows="2"
+                                      class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5"></textarea>
+                        </div>
+                        <div x-show="txForm.category_id && isCreditOrDebtCategory(txForm.category_id)">
+                            <label class="block mb-2 text-sm font-medium text-gray-300">Card / Credit Type</label>
+                            <select x-model="txForm.card_credit_type_id"
+                                    class="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-2.5">
+                                <option value="">None</option>
+                                <template x-for="sc in creditDebtSubcategories" :key="sc.id">
+                                    <option :value="sc.id" x-text="sc.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" :disabled="submitting"
+                            class="w-full px-5 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 focus:ring-4 focus:ring-emerald-300/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span x-show="!submitting" x-text="editingId ? 'Update Transaction' : 'Save Transaction'"></span>
+                        <span x-show="submitting">Saving...</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function ledgerApp() {
+    return {
+        transactions: [],
+        pillars: [],
+        allSubcategories: [],
+        currentPage: 1,
+        totalPages: 1,
+        ledgerFilters: { category_id: '', year: '', month: '', search: '' },
+        txForm: { date: '', category_id: '', subcategory_id: '', amount: '', detail: '', card_credit_type_id: '' },
+        editingId: null,
+        submitting: false,
+        filteredFormSubcategories: [],
+        creditDebtSubcategories: [],
+        years: [],
+        monthNames: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+
+        async init() {
+            const now = new Date();
+            this.years = Array.from({length: 9}, (_, i) => now.getFullYear() - 4 + i);
+            this.ledgerFilters.year = now.getFullYear();
+            this.txForm.date = now.toISOString().split('T')[0];
+            await this.loadPillars();
+            await this.loadSubcategories();
+            await this.loadTransactions();
+            this.creditDebtSubcategories = (this.allSubcategories || []).filter(
+                sc => sc.pillar_name === 'Debt' || sc.pillar_name === 'Credit'
+            );
+        },
+
+        loadPillars() {
+            return apiFetch('{% url "tracker:pillar-list" %}').then(data => {
+                this.pillars = data.pillars;
+            }).catch(e => console.error('Failed to load pillars:', e));
+        },
+
+        loadSubcategories() {
+            return apiFetch('{% url "tracker:subcategory-list" %}').then(data => {
+                this.allSubcategories = data.subcategories;
+            }).catch(e => console.error('Failed to load subcategories:', e));
+        },
+
+        loadTransactions() {
+            var params = new URLSearchParams();
+            if (this.ledgerFilters.category_id) params.set('category_id', this.ledgerFilters.category_id);
+            if (this.ledgerFilters.year) params.set('year', this.ledgerFilters.year);
+            if (this.ledgerFilters.month) params.set('month', this.ledgerFilters.month);
+            if (this.ledgerFilters.search) params.set('search', this.ledgerFilters.search);
+            params.set('page', this.currentPage);
+            return apiFetch('{% url "tracker:transaction-list" %}?' + params.toString()).then(data => {
+                this.transactions = data.transactions;
+                this.currentPage = data.page;
+                this.totalPages = data.num_pages;
+            }).catch(e => console.error('Failed to load transactions:', e));
+        },
+
+        changePage(page) {
+            if (page < 1 || page > this.totalPages) return;
+            this.currentPage = page;
+            this.loadTransactions();
+        },
+
+        loadFormSubcategories() {
+            if (!this.txForm.category_id) {
+                this.filteredFormSubcategories = [];
+                return;
+            }
+            this.filteredFormSubcategories = (this.allSubcategories || []).filter(
+                sc => sc.pillar_id === parseInt(this.txForm.category_id)
+            );
+        },
+
+        isCreditOrDebtCategory(categoryId) {
+            var p = (this.pillars || []).find(function(p) { return p.id === parseInt(categoryId); });
+            return p && (p.name === 'CREDIT' || p.name === 'DEBT');
+        },
+
+        openAddTransactionModal() {
+            this.editingId = null;
+            this.txForm = { date: new Date().toISOString().split('T')[0], category_id: '', subcategory_id: '', amount: '', detail: '', card_credit_type_id: '' };
+            this.filteredFormSubcategories = [];
+            this.openModal();
+        },
+
+        openEditTransactionModal(t) {
+            this.editingId = t.id;
+            this.txForm = {
+                date: t.date,
+                category_id: String(t.category_id),
+                subcategory_id: String(t.subcategory_id),
+                amount: t.amount,
+                detail: t.detail || '',
+                card_credit_type_id: t.card_credit_type_id ? String(t.card_credit_type_id) : '',
+            };
+            this.loadFormSubcategories();
+            this.openModal();
+        },
+
+        openModal() {
+            try {
+                this._modal = new Modal(document.getElementById('addTransactionModal'));
+                this._modal.show();
+            } catch(e) { console.error('Modal error:', e); }
+        },
+
+        closeAddTransactionModal() {
+            try {
+                if (this._modal) this._modal.hide();
+            } catch(e) { console.error('Modal close error:', e); }
+        },
+
+        submitTransaction() {
+            this.submitting = true;
+            var isEdit = !!this.editingId;
+            var data = {
+                date: this.txForm.date,
+                category_id: parseInt(this.txForm.category_id),
+                subcategory_id: parseInt(this.txForm.subcategory_id),
+                amount: parseFloat(this.txForm.amount),
+                detail: this.txForm.detail,
+                card_credit_type_id: this.txForm.card_credit_type_id ? parseInt(this.txForm.card_credit_type_id) : null,
+            };
+            var url = isEdit ? '/api/transactions/' + this.editingId + '/' : '{% url "tracker:transaction-create" %}';
+            var method = isEdit ? 'PATCH' : 'POST';
+            return apiFetch(url, {
+                method: method,
+                body: JSON.stringify(data)
+            }).then(function() {
+                if (this._modal) { this._modal.hide(); this._modal = null; }
+                this.editingId = null;
+                this.loadTransactions();
+                this.loadPillars();
+                showToast(isEdit ? 'Transaction updated' : 'Transaction saved', 'success');
+            }.bind(this)).catch(function(e) {
+                showToast(e.message || 'Failed to save transaction', 'error');
+            }.bind(this)).finally(function() {
+                this.submitting = false;
+            }.bind(this));
+        },
+
+        deleteTransaction(id) {
+            if (!confirm('Delete this transaction?')) return;
+            apiFetch('/api/transactions/' + id + '/', { method: 'DELETE' }).then(function() {
+                this.loadTransactions();
+                this.loadPillars();
+                showToast('Transaction deleted', 'success');
+            }.bind(this)).catch(function(e) {
+                showToast(e.message || 'Failed to delete transaction', 'error');
+            }.bind(this));
+        }
+    };
+}
+</script>
+{% endblock %}

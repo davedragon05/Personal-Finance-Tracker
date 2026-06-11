@@ -138,6 +138,11 @@ document.addEventListener('alpine:init', () => {
       pillar_id: '',
     },
 
+    settingsFilter: {
+      pillar_id: '',
+      search: '',
+    },
+
     lastCategoryId: '',
     lastSubcategoryId: '',
     newSubCategory: { pillar_id: '', name: '', due_day: '' },
@@ -397,11 +402,20 @@ document.addEventListener('alpine:init', () => {
     },
 
     async deleteSubCategory(subId) {
+      if (!confirm('Delete this sub-category?')) return;
       const result = await apiFetch(`/api/subcategories/${subId}/delete/`, { method: 'POST' });
       if (result.status === 'ok') {
         await this.loadSubcategories();
         this.showToast('Sub-category deleted', 'success');
       }
+    },
+
+    filteredSubcategories() {
+      return this.subcategories.filter(sub => {
+        if (this.settingsFilter.pillar_id && sub.pillar != this.settingsFilter.pillar_id) return false;
+        if (this.settingsFilter.search && !sub.name.toLowerCase().includes(this.settingsFilter.search.toLowerCase())) return false;
+        return true;
+      });
     },
 
     navigate(page) {
