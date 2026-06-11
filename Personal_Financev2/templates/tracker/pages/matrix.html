@@ -1,0 +1,100 @@
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <h2 class="text-lg font-mono neon-text-cyan">🗓 12-MONTH MATRIX PLANNER</h2>
+    <div class="flex items-center gap-4">
+      <select x-model="matrixFilter.year" @change="loadBudgetTargets()" class="input-cyber w-24 text-xs py-1.5">
+        <template x-for="y in [2024,2025,2026,2027,2028]">
+          <option :value="y" x-text="y"></option>
+        </template>
+      </select>
+      <div class="flex items-center gap-3 text-[10px] text-slate-600">
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-cyan-400"></span> Budget</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> Actual</span>
+      </div>
+      <span class="text-xs text-slate-500">
+        Left to Budget: <span class="neon-text-cyan" x-text="formatCurrency(monthlyIncome() - totalBudgetAllMonths())"></span>
+      </span>
+    </div>
+  </div>
+
+  <div class="glass-panel overflow-x-auto max-h-[70vh]">
+    <table class="table-cyber w-full min-w-[900px]">
+      <thead class="sticky top-0 z-10">
+        <tr class="bg-slate-800/95 backdrop-blur-md">
+          <th colspan="2" class="sticky left-0 bg-slate-800/95 z-20 px-4 py-3 text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-700">Category / Sub</th>
+          <template x-for="m in months" :key="m">
+            <th class="sticky top-0 bg-slate-800/95 px-4 py-3 text-center text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-700" x-text="getMonthName(m)"></th>
+          </template>
+          <th class="sticky top-0 bg-slate-800/95 px-4 py-3 text-center text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-700">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="p in pillars" :key="p.id">
+          <template x-for="(sub, idx) in subcategories.filter(s => s.pillar === p.id)" :key="sub.id">
+            <tr>
+              <td class="sticky left-0 bg-slate-900 z-10 px-4 py-3" x-show="idx === 0" :rowspan="subcategories.filter(s => s.pillar === p.id).length">
+                <span class="pillar-badge text-[10px]" :class="p.name" x-text="p.display"></span>
+              </td>
+              <td class="px-4 py-3 text-xs text-slate-400" x-text="sub.name"></td>
+              <template x-for="m in months" :key="m">
+                <td class="text-center px-2 py-3 align-top">
+                  <template x-if="matrixActuals.find(a => a.subcategory_id === sub.id && a.month === m)">
+                    <div class="text-emerald-400 text-[10px] leading-tight" x-text="'₱' + numberWithCommas(matrixActuals.find(a => a.subcategory_id === sub.id && a.month === m).actual)"></div>
+                  </template>
+                  <div x-show="getBudget(sub.id, m) != '0.00'"
+                       class="text-cyan-500/70 text-[10px] leading-tight cursor-pointer hover:text-cyan-300 transition-colors"
+                       @click="budgetModal = { subcategory_id: sub.id, year: matrixFilter.year, month: m, budgeted_amount: getBudget(sub.id, m) }; openModal('budget-modal')"
+                       x-text="'₱' + numberWithCommas(getBudget(sub.id, m))">
+                  </div>
+                  <div x-show="!matrixActuals.find(a => a.subcategory_id === sub.id && a.month === m) && getBudget(sub.id, m) == '0.00'"
+                       class="text-slate-700 text-[10px]">—</div>
+                </td>
+              </template>
+              <td class="text-center px-2 py-3 text-xs font-mono">
+                <span class="text-emerald-400" x-text="'₱' + numberWithCommas(
+                  matrixActuals.filter(a => a.subcategory_id === sub.id)
+                    .reduce((s, a) => s + (parseFloat(a.actual) || 0), 0)
+                )"></span>
+              </td>
+            </tr>
+          </template>
+        </template>
+        <tr class="bg-slate-800/30">
+          <td colspan="2" class="px-4 py-3 text-xs font-mono text-cyan-400">MONTH TOTALS</td>
+          <template x-for="m in months" :key="m">
+            <td class="text-center px-2 py-3 text-xs font-mono neon-text-cyan" x-text="'₱' + numberWithCommas(totalBudgetForMonth(m))"></td>
+          </template>
+          <td class="text-center px-2 py-3 text-xs font-mono neon-text-cyan" x-text="'₱' + numberWithCommas(totalBudgetAllMonths())"></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="budget-modal"
+       x-show="modalOpen === 'budget-modal'"
+       @keydown.escape.window="closeModal()"
+       class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm"
+       @click="closeModal()"
+       x-transition:enter="transition ease-out duration-300"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-200"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0">
+    <div class="w-full max-w-sm p-4" @click.stop>
+      <div class="glass-panel p-6">
+        <h3 class="text-sm font-mono neon-text-cyan mb-4">Edit Budget Target</h3>
+        <form @submit.prevent="saveBudgetTarget(); closeModal()" class="space-y-4">
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Budgeted Amount (₱)</label>
+            <input type="number" step="0.01" x-model="budgetModal.budgeted_amount" class="input-cyber text-xs" required>
+          </div>
+          <div class="flex gap-3 justify-end">
+            <button type="button" @click="closeModal()" class="text-xs text-slate-500 hover:text-slate-300 px-4 py-2">Cancel</button>
+            <button type="submit" class="btn-cyber text-xs">💾 Save Target</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

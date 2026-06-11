@@ -1,0 +1,70 @@
+<div class="space-y-6">
+  <h2 class="text-lg font-mono neon-text-cyan">⊞ MISSION CONTROL DASHBOARD</h2>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Monthly Income</p>
+      <p class="text-2xl font-bold neon-text-emerald" x-text="formatCurrency(stats.total_income)"></p>
+    </div>
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Fixed Outlays</p>
+      <p class="text-2xl font-bold neon-text-rose" x-text="formatCurrency(stats.total_outlays)"></p>
+    </div>
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Var. Spend Velocity</p>
+      <p class="text-2xl font-bold text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.3)]" x-text="'₱' + numberWithCommas(stats.variable_spend_velocity) + '/txn'"></p>
+    </div>
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Debt Payoff</p>
+      <div class="flex items-center gap-3">
+        <p class="text-2xl font-bold text-cyan-400" x-text="stats.debt_progress + '%'"></p>
+      </div>
+      <div class="progress-bar mt-2">
+        <div class="progress-fill bg-gradient-to-r from-cyan-500 to-emerald-400" :style="'width:' + stats.debt_progress + '%'"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="glass-panel p-5">
+      <h3 class="text-sm font-mono text-slate-400 mb-4">📊 Income vs. Expenses</h3>
+      <canvas id="chart-income-expense" height="250"></canvas>
+    </div>
+    <div class="glass-panel p-5">
+      <h3 class="text-sm font-mono text-slate-400 mb-4">🍩 Variable Expense Dispersal</h3>
+      <canvas id="chart-expense-dispersal" height="250"></canvas>
+    </div>
+  </div>
+
+  <div class="glass-panel p-5">
+    <h3 class="text-sm font-mono text-slate-400 mb-4">📈 Debt Repayment Track</h3>
+    <canvas id="chart-debt-track" height="200"></canvas>
+  </div>
+
+  <div class="glass-panel p-5">
+    <h3 class="text-sm font-mono text-slate-400 mb-4">🐷 Savings Goals Progress</h3>
+    <div class="space-y-4" x-show="savingsGoals.length > 0">
+      <template x-for="goal in savingsGoals" :key="goal.id">
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-300" x-text="goal.subcategory_name"></span>
+            <span class="text-slate-500">
+              <span class="text-emerald-400" x-text="'₱' + numberWithCommas(goal.total_saved)"></span>
+              / <span x-text="'₱' + numberWithCommas(goal.target_goal)"></span>
+            </span>
+          </div>
+          <div class="flex justify-between text-[10px] text-slate-600 mb-1">
+            <span>Total Saved: <span class="neon-text-emerald" x-text="'₱' + numberWithCommas(goal.total_saved)"></span></span>
+            <span>Left to Save: <span class="text-amber-400" x-text="'₱' + numberWithCommas(goal.left_to_save)"></span></span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill bg-gradient-to-r from-cyan-500 to-emerald-400"
+                 :style="'width:' + goal.progress_percent + '%'"></div>
+          </div>
+          <p class="text-right text-[10px] text-slate-600 mt-0.5" x-text="goal.progress_percent + '%'"></p>
+        </div>
+      </template>
+    </div>
+    <p class="text-slate-600 text-sm" x-show="savingsGoals.length === 0">No savings goals configured. Navigate to Savings Matrix to set them up.</p>
+  </div>
+</div>

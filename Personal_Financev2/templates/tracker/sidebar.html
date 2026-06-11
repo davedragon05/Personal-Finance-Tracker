@@ -1,0 +1,72 @@
+<aside class="fixed left-0 top-0 h-full z-40 flex flex-col transition-all duration-300 bg-slate-900/90 backdrop-blur-xl border-r border-slate-800/80"
+       :class="sidebarCollapsed ? 'w-16' : 'w-64'">
+  <div class="p-5 border-b border-slate-800/80 flex items-center" :class="sidebarCollapsed ? 'justify-center' : 'gap-3'">
+    <div class="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/50 flex items-center justify-center shrink-0">
+      <span class="text-cyan-400 text-sm font-bold">J</span>
+    </div>
+    <div x-show="!sidebarCollapsed" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
+      <h1 class="text-sm font-bold text-cyan-400 tracking-wider">JARVIS</h1>
+      <p class="text-[10px] text-slate-500 tracking-widest uppercase">Finance Terminal</p>
+    </div>
+  </div>
+
+  <nav class="flex-1 p-3 space-y-1 overflow-y-auto overflow-x-hidden"
+       :class="sidebarCollapsed ? 'flex flex-col items-center' : ''">
+    <a href="#" class="sidebar-link" :class="{ 'active': activePage === 'dashboard' }" @click.prevent="navigate('dashboard')" :title="sidebarCollapsed ? 'Mission Control' : ''">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" class="w-5 h-5 shrink-0"><rect x="2" y="2" width="7" height="7" rx="1"/><rect x="11" y="2" width="7" height="7" rx="1"/><rect x="2" y="11" width="7" height="7" rx="1"/><rect x="11" y="11" width="7" height="7" rx="1"/></svg>
+      <span class="text-sm whitespace-nowrap" x-show="!sidebarCollapsed" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">Mission Control</span>
+      <span class="ml-auto text-[9px] text-slate-700" x-show="!sidebarCollapsed">⌘1</span>
+    </a>
+    <a href="#" class="sidebar-link" :class="{ 'active': activePage === 'ledger' }" @click.prevent="navigate('ledger')" :title="sidebarCollapsed ? 'Transaction Ledger' : ''">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="w-5 h-5 shrink-0"><path d="M4 4h12M4 10h12M4 16h8"/></svg>
+      <span class="text-sm whitespace-nowrap" x-show="!sidebarCollapsed" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">Transaction Ledger</span>
+      <span class="ml-auto text-[9px] text-slate-700" x-show="!sidebarCollapsed">⌘2</span>
+    </a>
+    <a href="#" class="sidebar-link" :class="{ 'active': activePage === 'matrix' }" @click.prevent="navigate('matrix')" :title="sidebarCollapsed ? '12-Month Matrix' : ''">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" class="w-5 h-5 shrink-0"><rect x="2" y="2" width="16" height="16" rx="2"/><path d="M2 8h16M8 2v16"/></svg>
+      <span class="text-sm whitespace-nowrap" x-show="!sidebarCollapsed" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">12-Month Matrix</span>
+      <span class="ml-auto text-[9px] text-slate-700" x-show="!sidebarCollapsed">⌘3</span>
+    </a>
+    <a href="#" class="sidebar-link" :class="{ 'active': activePage === 'debt' }" @click.prevent="navigate('debt')" :title="sidebarCollapsed ? 'Debt Tracker' : ''">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 shrink-0"><path d="M10 2L3 5v5c0 4.5 3 8.5 7 10 4-1.5 7-5.5 7-10V5l-7-3z"/><path d="M8 10l1.5 1.5L12 8"/></svg>
+      <span class="text-sm whitespace-nowrap" x-show="!sidebarCollapsed" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">Debt Tracker</span>
+      <span class="ml-auto text-[9px] text-slate-700" x-show="!sidebarCollapsed">⌘4</span>
+    </a>
+    <a href="#" class="sidebar-link" :class="{ 'active': activePage === 'savings' }" @click.prevent="navigate('savings')" :title="sidebarCollapsed ? 'Savings Matrix' : ''">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="w-5 h-5 shrink-0"><path d="M2 14l4-4 3 3 5-6 4 3"/></svg>
+      <span class="text-sm whitespace-nowrap" x-show="!sidebarCollapsed" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">Savings Matrix</span>
+      <span class="ml-auto text-[9px] text-slate-700" x-show="!sidebarCollapsed">⌘5</span>
+    </a>
+    <a href="#" class="sidebar-link" :class="{ 'active': activePage === 'calendar' }" @click.prevent="navigate('calendar')" :title="sidebarCollapsed ? 'No-Spend Radar' : ''">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" class="w-5 h-5 shrink-0"><rect x="2" y="3" width="16" height="15" rx="2"/><path d="M2 7h16M6 1v4M14 1v4"/></svg>
+      <span class="text-sm whitespace-nowrap" x-show="!sidebarCollapsed" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">No-Spend Radar</span>
+      <span class="ml-auto text-[9px] text-slate-700" x-show="!sidebarCollapsed">⌘6</span>
+    </a>
+    <a href="#" class="sidebar-link" :class="{ 'active': activePage === 'settings' }" @click.prevent="navigate('settings')" :title="sidebarCollapsed ? 'System Settings' : ''">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 shrink-0"><circle cx="10" cy="10" r="3"/><path d="M10 1.5v2M10 16.5v2M18.5 10h-2M3.5 10h-2M15.6 4.4l-1.4 1.4M5.8 14.2l-1.4 1.4M15.6 15.6l-1.4-1.4M5.8 5.8L4.4 4.4"/></svg>
+      <span class="text-sm whitespace-nowrap" x-show="!sidebarCollapsed" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">System Settings</span>
+      <span class="ml-auto text-[9px] text-slate-700" x-show="!sidebarCollapsed">⌘7</span>
+    </a>
+  </nav>
+
+  <div class="p-4 border-t border-slate-800/80" :class="sidebarCollapsed ? 'flex flex-col items-center' : ''">
+    <div class="flex items-center gap-3 text-xs text-slate-500" :class="sidebarCollapsed ? 'flex-col gap-1' : ''">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse-glow shrink-0"></span>
+      <span x-show="!sidebarCollapsed">System Online</span>
+    </div>
+    <button @click="sidebarCollapsed = !sidebarCollapsed"
+            class="mt-2 flex items-center justify-center text-xs text-slate-600 hover:text-cyan-400 transition-colors w-full py-1 rounded-lg hover:bg-slate-800/50"
+            :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 transition-transform duration-300" :class="sidebarCollapsed ? 'rotate-0' : 'rotate-180'">
+        <path d="M12 4l-6 6 6 6"/>
+      </svg>
+    </button>
+    <form method="post" action="{% url 'logout' %}">
+      {% csrf_token %}
+      <button type="submit" class="mt-2 flex items-center justify-center text-xs text-slate-600 hover:text-rose-400 transition-colors w-full py-1 rounded-lg hover:bg-slate-800/50" :title="sidebarCollapsed ? 'Disconnect' : ''">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="w-4 h-4 shrink-0"><path d="M7 3H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3M13 5l5 5-5 5M8 10h10"/></svg>
+        <span class="text-xs ml-2" x-show="!sidebarCollapsed">Disconnect</span>
+      </button>
+    </form>
+  </div>
+</aside>

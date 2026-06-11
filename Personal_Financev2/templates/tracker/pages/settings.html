@@ -1,0 +1,67 @@
+<div class="space-y-6">
+  <h2 class="text-lg font-mono neon-text-cyan">⚙ CORE SYSTEM SETTINGS</h2>
+
+  <div class="glass-panel p-5">
+    <h3 class="text-sm font-mono text-slate-400 mb-4">Manage Sub-Categories</h3>
+    <form @submit.prevent="addSubCategory()" class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
+      <select x-model="newSubCategory.pillar_id" class="input-cyber text-xs py-2" required>
+        <option value="">Select Pillar</option>
+        <template x-for="p in pillars" :key="p.id">
+          <option :value="p.id" x-text="p.display"></option>
+        </template>
+      </select>
+      <input type="text" x-model="newSubCategory.name" class="input-cyber text-xs py-2" placeholder="Sub-category name" required>
+      <input type="number" x-model="newSubCategory.due_day" class="input-cyber text-xs py-2" placeholder="Due day (1-31)" min="1" max="31">
+      <button type="submit" class="btn-cyber text-xs py-2">＋ Add</button>
+    </form>
+
+    <div class="overflow-x-auto">
+      <table class="table-cyber w-full">
+        <thead>
+          <tr>
+            <th>Pillar</th>
+            <th>Sub-Category</th>
+            <th>Due Day</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="sub in subcategories" :key="sub.id">
+            <tr>
+              <td>
+                <span class="pillar-badge text-[10px]" :class="sub.pillar_name" x-text="sub.pillar_name"></span>
+              </td>
+              <td class="text-xs text-slate-300" x-text="sub.name"></td>
+              <td class="text-xs text-slate-500" x-text="sub.due_day || '—'"></td>
+              <td>
+                <button @click="deleteSubCategory(sub.id)"
+                        class="text-xs text-slate-600 hover:text-rose-400 transition-colors">
+                  ✕ Delete
+                </button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="subcategories.length === 0">
+            <td colspan="4" class="text-center text-slate-600 py-8">No sub-categories loaded</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="glass-panel p-5">
+    <h3 class="text-sm font-mono text-slate-400 mb-4">System Information</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+      <div class="space-y-2">
+        <div class="flex justify-between"><span class="text-slate-500">Database</span><span class="text-slate-300">PostgreSQL</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Template Engine</span><span class="text-slate-300">Django 6.0</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Frontend</span><span class="text-slate-300">Alpine.js + Tailwind</span></div>
+      </div>
+      <div class="space-y-2">
+        <div class="flex justify-between"><span class="text-slate-500">Active Sub-Categories</span><span class="text-slate-300" x-text="subcategories.length"></span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Transactions Recorded</span><span class="text-slate-300" x-text="transactions.length"></span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Savings Goals</span><span class="text-slate-300" x-text="savingsGoals.length"></span></div>
+      </div>
+    </div>
+  </div>
+</div>

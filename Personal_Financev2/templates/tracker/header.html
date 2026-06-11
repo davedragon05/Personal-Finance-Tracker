@@ -1,0 +1,29 @@
+<header class="sticky top-0 z-30 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/80 px-6 py-3">
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <span class="flex items-center gap-2 text-xs text-slate-500">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse-glow"></span>
+        <span>JARVIS</span>
+      </span>
+      <span class="text-xs text-cyan-600">//</span>
+      <span class="text-xs text-cyan-400" x-text="pageLabels[activePage] || 'Terminal'"></span>
+      <span class="text-sm font-mono neon-text-cyan">
+        NET WORTH: <span x-text="formatCurrency(stats.net_worth)"></span>
+      </span>
+    </div>
+    <div class="flex items-center gap-3 text-xs">
+      <span class="text-slate-500" x-text="'Year: ' + year"></span>
+      <select x-model="year" @change="loadDashboard()" class="input-cyber w-24 text-xs py-1">
+        <template x-for="y in [2024, 2025, 2026, 2027, 2028]">
+          <option :value="y" x-text="y"></option>
+        </template>
+      </select>
+      <span class="text-slate-500">Month:</span>
+      <select x-model="month" @change="loadDashboard()" class="input-cyber w-28 text-xs py-1">
+        <template x-for="(mName, idx) in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']">
+          <option :value="idx + 1" x-text="mName"></option>
+        </template>
+      </select>
+    </div>
+  </div>
+</header>

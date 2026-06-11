@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JARVIS — Terminal Login</title>
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'dist/css/main.css' %}">
+</head>
+<body class="min-h-screen flex items-center justify-center bg-slate-950">
+  <div class="glass-panel p-8 w-full max-w-md">
+    <div class="text-center mb-8">
+      <h1 class="text-2xl font-mono neon-text-cyan mb-2">JARVIS CORE</h1>
+      <p class="text-slate-500 text-sm">Personal Finance Terminal</p>
+    </div>
+    <form method="post" class="space-y-4">
+      {% csrf_token %}
+      <div>
+        <label class="block text-slate-400 text-xs uppercase tracking-wider mb-1">Username</label>
+        <input type="text" name="username" class="input-cyber" required>
+      </div>
+      <div>
+        <label class="block text-slate-400 text-xs uppercase tracking-wider mb-1">Password</label>
+        <input type="password" name="password" class="input-cyber" required>
+      </div>
+      {% if form.errors %}
+        <p class="text-rose-400 text-xs">Invalid credentials. Please try again.</p>
+      {% endif %}
+      <button type="submit" class="btn-cyber w-full">Authenticate</button>
+    </form>
+  </div>
+</body>
+</html>
