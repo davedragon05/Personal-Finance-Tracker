@@ -125,6 +125,8 @@ document.addEventListener('alpine:init', () => {
       category_id: '',
       subcategory_id: '',
       card_credit_type_id: '',
+      account_id: '',
+      payment_mode: '',
     },
 
     filter: {
@@ -147,20 +149,42 @@ document.addEventListener('alpine:init', () => {
     lastSubcategoryId: '',
     newSubCategory: { pillar_id: '', name: '', due_day: '' },
     budgetModal: { subcategory_id: '', year: 0, month: 0, budgeted_amount: '' },
-    debtModal: { subcategory_id: '', year: 0, month: 0, outstanding_balance: '', payment_made: 0 },
+      debtModal: { id: null, subcategory_id: '', year: 0, month: 0, date: '', outstanding_balance: '', payment_made: 0, payment_mode: '', is_edit: false, is_receivable: false, _manualOverride: false, _paymentMode: false },
     savingsEdit: { target_goal: '', starting_amount: '', monthly_contribution_target: '' },
     newGoal: { subcategory_id: '', target_goal: '', starting_amount: '', monthly_contribution_target: '' },
     contribute: { subcategory_id: '', subcategory_name: '', amount: '', date: new Date().toISOString().slice(0, 10), detail: '' },
     goalHistory: [],
-    editTxn: { id: null, date: '', detail: '', amount: '', category_id: '', subcategory_id: '' },
+    editTxn: { id: null, date: '', detail: '', amount: '', category_id: '', subcategory_id: '', payment_mode: '' },
     editGoalId: null,
+
+    recurringList: [],
+    recurringForm: { subcategory_id: '', amount: '', detail: '', next_due_date: new Date().toISOString().slice(0, 10) },
+    accounts: [],
+    accountForm: { name: '', account_type: 'checking', opening_balance: '' },
+    auditLogs: [],
 
     calendars: [],
 
+    showScrollBtn: false,
+
     init() {
+      this.showScrollBtn = false;
+      const scrollEl = document.querySelector('main');
+      if (scrollEl) {
+        scrollEl.addEventListener('scroll', () => {
+          this.showScrollBtn = scrollEl.scrollTop > 400;
+        });
+      }
       this.loadPillars();
-      this.loadDashboard();
-      this.loadTransactions();
+      const saved = localStorage.getItem('jarvis_page');
+      if (saved && saved !== 'dashboard') {
+        this.activePage = saved;
+        this.loadPageData(saved);
+        if (saved === 'calendar') setTimeout(() => this.initCalendar(), 100);
+      } else {
+        this.loadDashboard();
+        this.loadTransactions();
+      }
       this.listenForSync();
       this.$watch('sidebarCollapsed', val => {
         localStorage.setItem('jarvis_sidebar', val ? 'collapsed' : 'expanded');
@@ -200,6 +224,10 @@ document.addEventListener('alpine:init', () => {
       if (!this.form.category_id) return [];
       return this.subcategories.filter(s => s.pillar == this.form.category_id);
     },
+    getFilteredSubcategoriesForEdit() {
+      if (!this.editTxn.category_id) return [];
+      return this.subcategories.filter(s => s.pillar == this.editTxn.category_id);
+    },
 
     async loadDashboard() {
       this.stats = await apiFetch(`/api/dashboard/stats/?year=${this.year}&month=${this.month}`);
@@ -209,8 +237,21 @@ document.addEventListener('alpine:init', () => {
       this.loadDebtHistory();
     },
 
+    txnPage: 1,
+    txnPageSize: 50,
+    txnTotal: 0,
+
     async loadTransactions() {
-      this.transactions = await apiFetch(`/api/transactions/?year=${this.year}&month=${this.month}&limit=all`);
+      const y = this.filter?.year || this.year;
+      const m = this.filter?.month || this.month;
+      const resp = await apiFetch(`/api/transactions/?year=${y}&month=${m}&page=${this.txnPage}&page_size=${this.txnPageSize}`);
+      if (Array.isArray(resp)) {
+        this.transactions = resp;
+        this.txnTotal = resp.length;
+      } else {
+        this.transactions = resp.results || [];
+        this.txnTotal = resp.count || 0;
+      }
     },
 
     async loadBudgetTargets() {
@@ -224,7 +265,66 @@ document.addEventListener('alpine:init', () => {
     },
 
     async loadDebtHistory() {
-      this.debtHistory = await apiFetch(`/api/debt-history/?year=${this.year}`);
+      this.debtHistory = await apiFetch('/api/debt-history/');
+    },
+
+    groupedDebtData() {
+      const groups = {};
+      for (const entry of this.debtHistory) {
+        const key = entry.subcategory_name;
+        if (!groups[key]) groups[key] = { name: key, entries: [], total_collected: 0, is_receivable: entry.is_receivable };
+        groups[key].entries.push(entry);
+        groups[key].total_collected += parseFloat(entry.payment_made);
+        if (entry.is_receivable) groups[key].is_receivable = true;
+      }
+      const result = [];
+      for (const key in groups) {
+        const g = groups[key];
+        const sorted = g.entries.sort((a, b) => a.year - b.year || a.month - b.month);
+        const latest = sorted[sorted.length - 1];
+        const current_balance = parseFloat(latest.outstanding_balance);
+        const total_tracked = current_balance + g.total_collected;
+        const progress = total_tracked > 0 ? (g.total_collected / total_tracked) * 100 : 0;
+        result.push({
+          name: key,
+          entries: sorted,
+          total_tracked: total_tracked,
+          total_collected: g.total_collected,
+          current_balance: current_balance,
+          progress: Math.min(progress, 100),
+          is_paid: current_balance <= 0,
+          is_receivable: g.is_receivable,
+        });
+      }
+      return result.sort((a, b) => a.name.localeCompare(b.name));
+    },
+
+    yearDebtStats(entries) {
+      const y = this.filter?.year || new Date().getFullYear();
+      const filtered = entries.filter(e => e.year === y);
+      if (filtered.length === 0) return { total_collected: 0, current_balance: 0 };
+      const sorted = filtered.sort((a, b) => a.month - b.month);
+      const latest = sorted[sorted.length - 1];
+      return {
+        total_collected: filtered.reduce((s, e) => s + parseFloat(e.payment_made), 0),
+        current_balance: parseFloat(latest.outstanding_balance),
+      };
+    },
+
+    autoFillOutstanding() {
+      if (this.debtModal.is_edit || this.debtModal._manualOverride) return;
+      const subId = this.debtModal.subcategory_id;
+      const payment = parseFloat(this.debtModal.payment_made);
+      if (!subId || !payment || payment <= 0) return;
+      const prev = this.debtHistory
+        .filter(e => e.subcategory_id == subId)
+        .sort((a, b) => b.id - a.id);
+      if (prev.length === 0) return;
+      const prevBal = parseFloat(prev[0].outstanding_balance);
+      this.debtModal.outstanding_balance = Math.max(prevBal - payment, 0);
+    },
+    markManualOverride() {
+      this.debtModal._manualOverride = true;
     },
 
     async handleTransactionSubmit() {
@@ -235,6 +335,8 @@ document.addEventListener('alpine:init', () => {
         category_id: this.form.category_id,
         subcategory_id: this.form.subcategory_id || null,
         card_credit_type_id: this.form.card_credit_type_id || null,
+        account_id: this.form.account_id || null,
+        payment_mode: this.form.payment_mode,
       };
       const result = await apiFetch('/api/transactions/create/', {
         method: 'POST',
@@ -251,6 +353,8 @@ document.addEventListener('alpine:init', () => {
           category_id: '',
           subcategory_id: '',
           card_credit_type_id: '',
+          account_id: '',
+          payment_mode: '',
         };
         window.dispatchEvent(new CustomEvent('jarvis-sync'));
         this.showToast('Transaction logged successfully', 'success');
@@ -264,6 +368,19 @@ document.addEventListener('alpine:init', () => {
       await apiFetch(`/api/transactions/${txnId}/delete/`, { method: 'POST' });
       window.dispatchEvent(new CustomEvent('jarvis-sync'));
       this.showToast('Transaction deleted', 'success');
+    },
+
+    cloneTransaction(txn) {
+      this.form.date = txn.date;
+      this.form.detail = txn.detail;
+      this.form.amount = txn.amount;
+      this.form.category_id = txn.category_id;
+      this.form.subcategory_id = txn.subcategory_id;
+      this.form.payment_mode = txn.payment_mode || '';
+      this.loadSubcategories(txn.category_id);
+      this.lastCategoryId = txn.category_id;
+      this.lastSubcategoryId = txn.subcategory_id;
+      this.openModal('txn-modal');
     },
 
     async saveBudgetTarget() {
@@ -298,13 +415,117 @@ document.addEventListener('alpine:init', () => {
     },
 
     async saveDebtEntry() {
-      await apiFetch('/api/debt-history/update/', {
+      const payload = { ...this.debtModal };
+      payload.is_receivable = payload.is_receivable === true || payload.is_receivable === 'true';
+      if (!payload.is_edit && payload.subcategory_id) {
+        const hasNewBalance = parseFloat(payload.outstanding_balance) > 0;
+        const manualBalance = payload._manualOverride === true;
+        if (hasNewBalance && manualBalance) {
+          const sub = this.subcategories.find(s => s.id == payload.subcategory_id);
+          const name = sub ? sub.name : 'this loan';
+          const dup = this.debtHistory.find(e => String(e.subcategory_id) === String(payload.subcategory_id));
+          if (dup) {
+            let newName = name;
+            let attempt = 1;
+            while (this.subcategories.some(s => s.name === newName && s.pillar_name === 'DEBT')) {
+              attempt++;
+              newName = name + ' ' + attempt;
+            }
+            if (!confirm(`"${name}" already has entries. Create a new DEBT subcategory "${newName}" instead?`)) { return; }
+            const debtPillar = this.pillars.find(p => p.name === 'DEBT');
+            if (!debtPillar) { this.showToast('Pillar data not loaded yet', 'error'); return; }
+            const result = await apiFetch('/api/subcategories/create/', {
+              method: 'POST',
+              body: JSON.stringify({ pillar_id: debtPillar.id, name: newName }),
+            });
+            if (result.status !== 'ok') {
+              this.showToast(result.message || 'Failed to create subcategory', 'error');
+              return;
+            }
+            payload.subcategory_id = result.subcategory.id;
+            await this.loadSubcategories();
+          }
+        }
+      }
+      const resp = await apiFetch('/api/debt-history/update/', {
         method: 'POST',
-        body: JSON.stringify(this.debtModal),
+        body: JSON.stringify(payload),
       });
-      this.debtModal = { subcategory_id: '', year: 0, month: 0, outstanding_balance: '', payment_made: 0 };
+      if (resp.status !== 'ok') {
+        this.showToast(resp.message || 'Error saving debt entry', 'error');
+        return;
+      }
+      const debtHistoryId = payload.is_edit ? payload.id : resp.id;
+      const payment = parseFloat(payload.payment_made) || 0;
+      const balance = parseFloat(payload.outstanding_balance) || 0;
+      const debtPillar = this.pillars.find(p => p.name === 'DEBT');
+      const incomePillar = this.pillars.find(p => p.name === 'INCOME');
+      let effectiveAmount, effectivePillar, detail;
+      if (payload.is_receivable && payment === 0 && balance > 0) {
+        effectiveAmount = balance;
+        effectivePillar = debtPillar;
+        detail = 'Loan given';
+      } else if (payload.is_receivable && payment > 0) {
+        effectiveAmount = payment;
+        effectivePillar = incomePillar;
+        detail = 'Debt repayment received';
+      } else {
+        effectiveAmount = payment;
+        effectivePillar = debtPillar;
+        detail = 'Debt payment';
+      }
+      const txns = await apiFetch(`/api/transactions/?debt_history_id=${debtHistoryId}&limit=all`);
+      const existingTxn = Array.isArray(txns) ? txns[0] : (txns.results || [])[0];
+      if (effectiveAmount > 0) {
+        if (existingTxn) {
+          await apiFetch(`/api/transactions/${existingTxn.id}/update/`, {
+            method: 'POST',
+            body: JSON.stringify({
+              amount: effectiveAmount,
+              payment_mode: payload.payment_mode,
+              date: payload.date,
+              detail: detail,
+              category_id: effectivePillar.id,
+              subcategory_id: payload.subcategory_id,
+            }),
+          });
+        } else {
+          await apiFetch('/api/transactions/create/', {
+            method: 'POST',
+            body: JSON.stringify({
+              date: payload.date,
+              detail: detail,
+              amount: effectiveAmount,
+              category_id: effectivePillar.id,
+              subcategory_id: payload.subcategory_id,
+              payment_mode: payload.payment_mode,
+              debt_history_id: debtHistoryId,
+            }),
+          });
+        }
+        window.dispatchEvent(new CustomEvent('jarvis-sync'));
+      } else if (existingTxn) {
+        await apiFetch(`/api/transactions/${existingTxn.id}/delete/`, { method: 'POST' });
+        window.dispatchEvent(new CustomEvent('jarvis-sync'));
+      }
+      this.debtModal = { id: null, subcategory_id: '', year: 0, month: 0, date: '', outstanding_balance: '', payment_made: 0, payment_mode: '', is_edit: false, is_receivable: false, _manualOverride: false, _paymentMode: false };
       await this.loadDebtHistory();
       this.showToast('Debt entry saved', 'success');
+    },
+
+    async deleteDebtEntry(id) {
+      if (!confirm('Delete this debt entry?')) return;
+      const txns = await apiFetch(`/api/transactions/?debt_history_id=${id}&limit=all`);
+      const txnList = Array.isArray(txns) ? txns : (txns.results || []);
+      for (const txn of txnList) {
+        await apiFetch(`/api/transactions/${txn.id}/delete/`, { method: 'POST' });
+      }
+      await apiFetch('/api/debt-history/delete/', {
+        method: 'POST',
+        body: JSON.stringify({ id }),
+      });
+      await this.loadDebtHistory();
+      this.showToast('Debt entry deleted', 'success');
     },
 
     async loadGoalHistory(subcategoryId) {
@@ -318,6 +539,7 @@ document.addEventListener('alpine:init', () => {
       if (this.editTxn.amount) payload.amount = this.editTxn.amount;
       if (this.editTxn.category_id) payload.category_id = this.editTxn.category_id;
       if (this.editTxn.subcategory_id) payload.subcategory_id = this.editTxn.subcategory_id;
+      if (this.editTxn.payment_mode !== undefined) payload.payment_mode = this.editTxn.payment_mode;
       const result = await apiFetch(`/api/transactions/${txnId}/update/`, {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -418,15 +640,138 @@ document.addEventListener('alpine:init', () => {
       });
     },
 
-    navigate(page) {
-      this.activePage = page;
-      this.loadPillars();
-      if (page === 'dashboard') this.loadDashboard();
-      if (page === 'ledger') { this.loadTransactions(); this.loadSubcategories(); }
+    runningBalance(txnId) {
+      const sorted = [...this.transactions].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+      let bal = 0;
+      for (const t of sorted) {
+        const amt = parseFloat(t.amount);
+        if (t.category === 'INCOME') bal += amt;
+        else bal -= amt;
+        if (t.id === txnId) return bal;
+      }
+      return 0;
+    },
+
+    perAccountBalance(accountId) {
+      const a = this.accounts.find(ac => ac.id === accountId);
+      return a ? a.balance : null;
+    },
+
+    async loadRecurring() {
+      this.recurringList = await apiFetch('/api/recurring/');
+    },
+
+    async addRecurring() {
+      const result = await apiFetch('/api/recurring/', {
+        method: 'POST',
+        body: JSON.stringify(this.recurringForm),
+      });
+      if (result.status === 'ok') {
+        this.recurringForm = { subcategory_id: '', amount: '', detail: '', next_due_date: new Date().toISOString().slice(0, 10) };
+        await this.loadRecurring();
+        this.showToast('Recurring transaction added', 'success');
+      } else {
+        this.showToast(result.message || 'Error adding recurring transaction', 'error');
+      }
+    },
+
+    async deleteRecurring(id) {
+      if (!confirm('Delete this recurring transaction?')) return;
+      await apiFetch(`/api/recurring/${id}/delete/`, { method: 'POST' });
+      await this.loadRecurring();
+      this.showToast('Recurring transaction deleted', 'success');
+    },
+
+    async loadAccounts() {
+      this.accounts = await apiFetch('/api/accounts/');
+    },
+
+    async loadAuditLog() {
+      this.auditLogs = await apiFetch('/api/audit-log/');
+    },
+
+    async addAccount() {
+      const result = await apiFetch('/api/accounts/', {
+        method: 'POST',
+        body: JSON.stringify(this.accountForm),
+      });
+      if (result.status === 'ok') {
+        this.accountForm = { name: '', account_type: 'checking', opening_balance: '' };
+        await this.loadAccounts();
+        this.showToast('Account added', 'success');
+      } else {
+        this.showToast(result.message || 'Error adding account', 'error');
+      }
+    },
+
+    async deleteAccount(id) {
+      if (!confirm('Delete this account?')) return;
+      await apiFetch(`/api/accounts/${id}/delete/`, { method: 'POST' });
+      await this.loadAccounts();
+      this.showToast('Account deleted', 'success');
+    },
+
+    backupExport() {
+      window.open('/api/backup/export/', '_blank');
+    },
+
+    async backupImport(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const result = await apiFetch('/api/backup/import/', {
+          method: 'POST',
+          body: text,
+        });
+        if (result.status === 'ok') {
+          this.showToast(`Restored ${result.transactions_imported} transaction(s)`, 'success');
+        } else {
+          this.showToast(result.message || 'Restore failed', 'error');
+        }
+      } catch (e) {
+        this.showToast('Restore failed: ' + e.message, 'error');
+      }
+      event.target.value = '';
+    },
+
+    async importCSV(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const resp = await fetch('/api/transactions/import/csv/', {
+          method: 'POST',
+          body: formData,
+          headers: { 'X-CSRFToken': getCSRFToken() },
+        });
+        const result = await resp.json();
+        if (result.status === 'ok') {
+          await this.loadTransactions();
+          this.showToast(`Imported ${result.created} transaction(s)`, 'success');
+        } else {
+          this.showToast(result.message || 'Import failed', 'error');
+        }
+      } catch (e) {
+        this.showToast('Import failed: ' + e.message, 'error');
+      }
+      event.target.value = '';
+    },
+
+    loadPageData(page) {
+      if (page === 'dashboard') { this.loadDashboard(); this.loadAccounts(); }
+      if (page === 'ledger') { this.loadTransactions(); this.loadSubcategories(); this.loadAccounts(); }
       if (page === 'matrix') { this.loadBudgetTargets(); this.loadSubcategories(); }
       if (page === 'savings') { this.loadSavingsGoals(); this.loadSubcategories(); }
       if (page === 'debt') { this.loadDebtHistory(); this.loadSubcategories(); }
-      if (page === 'settings') { this.loadSubcategories(); }
+      if (page === 'settings') { this.loadSubcategories(); this.loadRecurring(); this.loadAccounts(); this.loadAuditLog(); }
+    },
+    navigate(page) {
+      this.activePage = page;
+      localStorage.setItem('jarvis_page', page);
+      this.loadPillars();
+      this.loadPageData(page);
       setTimeout(() => this.initCalendar(), 100);
     },
 
@@ -470,6 +815,7 @@ document.addEventListener('alpine:init', () => {
         this.renderIncomeChart(data);
         this.renderExpenseChart(data);
         this.renderDebtChart(data);
+        this.renderNetWorthChart(data);
       }, 100);
     },
 
@@ -571,18 +917,56 @@ document.addEventListener('alpine:init', () => {
       });
     },
 
+    renderNetWorthChart(data) {
+      const el = document.getElementById('chart-net-worth');
+      if (!el) return;
+      if (this.chartInstances.netWorth) this.chartInstances.netWorth.destroy();
+      this.chartInstances.netWorth = new Chart(el, {
+        type: 'line',
+        data: {
+          labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+          datasets: [{
+            label: 'Net Worth',
+            data: data.net_worth_over_time.net_worth,
+            borderColor: 'rgba(52, 211, 153, 1)',
+            backgroundColor: 'rgba(52, 211, 153, 0.1)',
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: 'rgba(52, 211, 153, 0.8)',
+            pointRadius: 3,
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { labels: { color: '#94a3b8', font: { family: 'JetBrains Mono, monospace' } } },
+          },
+          scales: {
+            x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },
+            y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },
+          },
+        },
+      });
+    },
+
     showToast(msg, type = 'success') {
       const toast = document.getElementById('jarvis-toast');
       if (!toast) return;
       const msgEl = toast.querySelector('.toast-message');
       if (msgEl) msgEl.textContent = msg;
-      toast.className = `fixed top-4 right-4 z-[100] px-4 py-3 rounded-lg backdrop-blur-md border text-sm font-mono transition-all duration-500 ${
+      toast.className = `fixed top-4 right-4 z-[100] px-4 py-3 rounded-lg backdrop-blur-md border text-sm font-mono transition-all duration-500 translate-x-0 opacity-100 ${
         type === 'success'
-          ? 'bg-emerald-900/60 border-emerald-500/50 text-emerald-300'
-          : 'bg-rose-900/60 border-rose-500/50 text-rose-300'
+          ? 'bg-emerald-900/80 border-emerald-500/60 text-emerald-300 shadow-[0_0_16px_rgba(52,211,153,0.15)]'
+          : 'bg-rose-900/80 border-rose-500/60 text-rose-300 shadow-[0_0_16px_rgba(251,113,133,0.15)]'
       }`;
       toast.classList.remove('hidden');
-      setTimeout(() => toast.classList.add('hidden'), 3000);
+      setTimeout(() => {
+        toast.classList.add('translate-x-4', 'opacity-0');
+        setTimeout(() => {
+          toast.classList.add('hidden');
+          toast.classList.remove('translate-x-4', 'opacity-0');
+        }, 400);
+      }, 2800);
     },
 
     formatCurrency(val) {
@@ -598,6 +982,12 @@ document.addEventListener('alpine:init', () => {
     getMonthName(m) {
       const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       return names[m - 1] || '';
+    },
+
+    formatShortDate(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr + 'T00:00:00');
+      return this.getMonthName(d.getMonth() + 1) + ' ' + d.getDate() + ', ' + d.getFullYear();
     },
 
     months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],

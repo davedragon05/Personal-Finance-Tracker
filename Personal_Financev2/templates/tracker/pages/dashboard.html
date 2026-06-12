@@ -12,7 +12,7 @@
     </div>
     <div class="glass-card">
       <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Var. Spend Velocity</p>
-      <p class="text-2xl font-bold text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.3)]" x-text="'₱' + numberWithCommas(stats.variable_spend_velocity) + '/txn'"></p>
+      <p class="text-2xl font-bold text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.3)]" x-text="'₱' + numberWithCommas(stats.variable_spend_velocity)"></p>
     </div>
     <div class="glass-card">
       <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Debt Payoff</p>
@@ -36,9 +36,29 @@
     </div>
   </div>
 
-  <div class="glass-panel p-5">
-    <h3 class="text-sm font-mono text-slate-400 mb-4">📈 Debt Repayment Track</h3>
-    <canvas id="chart-debt-track" height="200"></canvas>
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="glass-panel p-5">
+      <h3 class="text-sm font-mono text-slate-400 mb-4">📈 Debt Repayment Track</h3>
+      <canvas id="chart-debt-track" height="200"></canvas>
+    </div>
+    <div class="glass-panel p-5">
+      <h3 class="text-sm font-mono text-slate-400 mb-4">📊 Net Worth Over Time</h3>
+      <canvas id="chart-net-worth" height="200"></canvas>
+    </div>
+  </div>
+
+  <div class="glass-panel p-5" x-show="accounts.length > 0">
+    <h3 class="text-sm font-mono text-slate-400 mb-4">🏦 Account Balances</h3>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <template x-for="a in accounts" :key="a.id">
+        <div class="bg-slate-800/40 rounded-lg p-3 border border-slate-700/50">
+          <p class="text-[10px] text-slate-500 uppercase tracking-wider" x-text="a.name"></p>
+          <p class="text-xs text-slate-500" x-text="a.account_type_display"></p>
+          <p class="text-sm font-mono mt-1" :class="parseFloat(a.balance) >= 0 ? 'neon-text-emerald' : 'neon-text-rose'"
+             x-text="'₱' + numberWithCommas(a.balance)"></p>
+        </div>
+      </template>
+    </div>
   </div>
 
   <div class="glass-panel p-5">

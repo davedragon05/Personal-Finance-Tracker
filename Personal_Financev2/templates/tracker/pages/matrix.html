@@ -39,7 +39,9 @@
               <template x-for="m in months" :key="m">
                 <td class="text-center px-2 py-3 align-top">
                   <template x-if="matrixActuals.find(a => a.subcategory_id === sub.id && a.month === m)">
-                    <div class="text-emerald-400 text-[10px] leading-tight" x-text="'₱' + numberWithCommas(matrixActuals.find(a => a.subcategory_id === sub.id && a.month === m).actual)"></div>
+                    <div :class="parseFloat(matrixActuals.find(a => a.subcategory_id === sub.id && a.month === m).actual) > parseFloat(getBudget(sub.id, m) || 0) ? 'text-rose-400' : 'text-emerald-400'"
+                         class="text-[10px] leading-tight"
+                         x-text="'₱' + numberWithCommas(matrixActuals.find(a => a.subcategory_id === sub.id && a.month === m).actual)"></div>
                   </template>
                   <div x-show="getBudget(sub.id, m) != '0.00'"
                        class="text-cyan-500/70 text-[10px] leading-tight cursor-pointer hover:text-cyan-300 transition-colors"

@@ -1,41 +1,140 @@
 <div class="space-y-6">
   <div class="flex items-center justify-between">
-    <h2 class="text-lg font-mono neon-text-cyan">🛡 DEBT & LIABILITY TRACKER</h2>
-    <button @click="debtModal = { subcategory_id: '', year: year, month: month, outstanding_balance: '', payment_made: 0 };
-             openModal('debt-modal')" class="btn-cyber text-xs">
-      ＋ Record Debt
+    <h2 class="text-lg font-mono neon-text-cyan">🛡 LOAN TRACKER</h2>
+    <button @click="debtModal = { subcategory_id: '', date: new Date().toISOString().slice(0, 10), outstanding_balance: '', payment_made: 0, payment_mode: '', is_edit: false, is_receivable: false, _manualOverride: false, _paymentMode: false }; openModal('debt-modal')" class="btn-cyber text-xs">
+      ＋ New Entry
     </button>
   </div>
 
-  <div class="glass-panel p-5">
-    <div class="overflow-x-auto">
-      <table class="table-cyber w-full">
-        <thead>
-          <tr>
-            <th>Account</th>
-            <th>Month</th>
-            <th>Year</th>
-            <th class="text-right">Outstanding Balance</th>
-            <th class="text-right">Payment Made</th>
-          </tr>
-        </thead>
-        <tbody>
-          <template x-for="entry in debtHistory" :key="entry.id">
-            <tr>
-              <td class="text-xs text-slate-300" x-text="entry.subcategory_name"></td>
-              <td class="text-xs text-slate-400" x-text="getMonthName(entry.month)"></td>
-              <td class="text-xs text-slate-400" x-text="entry.year"></td>
-              <td class="text-right font-mono neon-text-rose text-xs" x-text="'₱' + numberWithCommas(entry.outstanding_balance)"></td>
-              <td class="text-right font-mono text-emerald-400 text-xs" x-text="'₱' + numberWithCommas(entry.payment_made)"></td>
-            </tr>
-          </template>
-          <tr x-show="debtHistory.length === 0">
-            <td colspan="5" class="text-center text-slate-600 py-8">No debt records</td>
-          </tr>
-        </tbody>
-      </table>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Total Collected</p>
+      <p class="text-2xl font-bold text-emerald-400"
+         x-text="'₱' + numberWithCommas(groupedDebtData().reduce((s,g) => s + g.total_collected, 0))"></p>
+    </div>
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Current Outstanding</p>
+      <p class="text-2xl font-bold text-amber-400"
+         x-text="'₱' + numberWithCommas(groupedDebtData().reduce((s,g) => s + g.current_balance, 0))"></p>
+    </div>
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Active Loans</p>
+      <p class="text-2xl font-bold text-cyan-400"
+         x-text="groupedDebtData().length"></p>
     </div>
   </div>
+
+  <div class="flex gap-3 items-center">
+    <select x-model="filter.year" @change="loadDebtHistory()" class="input-cyber text-xs py-1.5 w-28">
+      <template x-for="y in [2024,2025,2026,2027,2028]">
+        <option :value="y" x-text="y"></option>
+      </template>
+    </select>
+    <span class="text-xs text-slate-600" x-show="debtHistory.length > 0" x-text="debtHistory.filter(e => e.year === filter.year).length + ' records'"></span>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <template x-for="group in groupedDebtData()" :key="group.name">
+      <div class="glass-card">
+        <div class="flex items-start justify-between mb-2">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <h3 class="text-sm font-mono text-slate-200" x-text="group.name"></h3>
+            <span x-show="group.is_paid" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-500/30">Fully Paid</span>
+            <span x-show="!group.is_paid" class="text-[10px] px-1.5 py-0.5 rounded bg-amber-600/20 text-amber-400 border border-amber-500/30">Active</span>
+            <span x-show="group.is_receivable" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-500/30">Receivable</span>
+            <span x-show="!group.is_receivable" class="text-[10px] px-1.5 py-0.5 rounded bg-rose-600/20 text-rose-400 border border-rose-500/30">Payable</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3 mb-2">
+          <div class="flex-1">
+            <div class="progress-bar">
+              <div class="progress-fill"
+                   :class="group.is_paid ? 'bg-gradient-to-r from-emerald-500 to-emerald-400' : 'bg-gradient-to-r from-cyan-500 to-emerald-400'"
+                   :style="'width:' + group.progress + '%'"></div>
+            </div>
+          </div>
+          <div class="text-right flex-shrink-0">
+            <p class="text-[9px] text-slate-500 uppercase tracking-wider">Balance</p>
+            <p class="text-base font-bold font-mono"
+               :class="group.current_balance > 0 ? 'text-amber-400' : 'text-emerald-400'"
+               x-text="'₱' + numberWithCommas(group.current_balance)"></p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 mb-2">
+          <div>
+            <p class="text-[9px] text-slate-500 uppercase tracking-wider">Paid <span x-text="filter.year"></span></p>
+            <p class="text-xs font-mono text-emerald-400" x-text="'₱' + numberWithCommas(yearDebtStats(group.entries).total_collected)"></p>
+          </div>
+          <div>
+            <p class="text-[9px] text-slate-500 uppercase tracking-wider">Total Collected</p>
+            <p class="text-xs font-mono neon-text-cyan" x-text="'₱' + numberWithCommas(group.total_collected)"></p>
+          </div>
+          <div>
+            <p class="text-[9px] text-slate-500 uppercase tracking-wider">Entries</p>
+            <p class="text-xs font-mono text-slate-400" x-text="group.entries.length"></p>
+          </div>
+        </div>
+
+        <div class="flex gap-1.5 mb-2">
+          <button @click="debtModal = { subcategory_id: group.entries[0].subcategory_id, date: new Date().toISOString().slice(0, 10), outstanding_balance: '', payment_made: 0, payment_mode: '', is_edit: false, is_receivable: group.is_receivable, _manualOverride: false, _paymentMode: true }; openModal('debt-modal')"
+                  class="flex-1 text-[10px] py-1 rounded bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-600/40 transition-all duration-200">
+            ＋ Payment
+          </button>
+          <button @click="loadGoalHistory(group.entries[0].subcategory_id); openModal('debt-history')"
+                  class="flex-1 text-[10px] py-1 rounded bg-slate-700/30 border border-slate-600/50 text-slate-400 hover:text-cyan-300 transition-all duration-200">
+            History
+          </button>
+        </div>
+
+        <div class="overflow-x-auto max-h-40 overflow-y-auto">
+          <table class="table-cyber w-full text-[10px]">
+            <thead>
+              <tr>
+                <th class="text-left">Date</th>
+                <th class="text-right">Payment</th>
+                <th class="text-right">Outs.</th>
+                <th class="text-center"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="entry in group.entries.filter(e => e.year === filter.year)" :key="entry.id">
+                <tr>
+                  <td class="text-slate-400" x-text="formatShortDate(entry.date)"></td>
+                  <td class="text-right font-mono"
+                     x-text="parseFloat(entry.payment_made) > 0 ? '₱' + numberWithCommas(entry.payment_made) : '—'"
+                     :class="parseFloat(entry.payment_made) > 0 ? 'text-emerald-400' : 'text-slate-600'"></td>
+                  <td class="text-right font-mono neon-text-rose" x-text="'₱' + numberWithCommas(entry.outstanding_balance)"></td>
+                  <td class="text-center whitespace-nowrap">
+                    <button @click="debtModal = { id: entry.id, subcategory_id: entry.subcategory_id, date: entry.date, outstanding_balance: parseFloat(entry.outstanding_balance), payment_made: parseFloat(entry.payment_made), payment_mode: entry.payment_mode || '', is_edit: true, is_receivable: entry.is_receivable, _manualOverride: false }; openModal('debt-modal')"
+                            class="text-slate-600 hover:text-amber-400 transition-colors">✎</button>
+                    <button @click="deleteDebtEntry(entry.id)" class="text-slate-600 hover:text-rose-400 transition-colors ml-0.5">✕</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <div x-show="debtHistory.filter(e => e.year === filter.year).length === 0" class="glass-panel p-5 text-center py-10">
+    <p class="text-slate-600 text-sm">No records for <span class="text-cyan-400" x-text="filter.year"></span>.</p>
+    <p class="text-xs text-slate-700 mt-1">Click <span class="text-cyan-400">"＋ New Entry"</span> to start tracking a loan.</p>
+  </div>
+
+    <div class="glass-panel p-5">
+      <h3 class="text-sm font-mono text-slate-400 mb-4">How it works</h3>
+      <div class="text-xs text-slate-500 space-y-2 leading-relaxed">
+        <p>1. Create a <span class="text-cyan-400">DEBT</span> sub-category for each loan or person (e.g. "Juan Loan", "Car Loan").</p>
+        <p>2. Choose the type: <span class="text-rose-400">"I am paying my loan"</span> (your own debt) or <span class="text-emerald-400">"Someone is paying me back"</span> (money owed to you).</p>
+        <p>3. Record the <span class="text-amber-400">Outstanding Balance</span> and <span class="text-emerald-400">Amount Paid/Received</span>.</p>
+        <p>4. Payments auto-create transactions in the Ledger — <span class="text-rose-400">red</span> for debt payments, <span class="text-emerald-400">green</span> for repayments received.</p>
+        <p>5. When the balance reaches zero, it shows <span class="text-emerald-400">"Fully Paid"</span>.</p>
+      </div>
+    </div>
 
   <div id="debt-modal"
        x-show="modalOpen === 'debt-modal'"
@@ -50,44 +149,108 @@
        x-transition:leave-end="opacity-0">
     <div class="w-full max-w-sm p-4" @click.stop>
       <div class="glass-panel p-6">
-        <h3 class="text-sm font-mono neon-text-cyan mb-4">Record Debt Entry</h3>
+        <h3 class="text-sm font-mono mb-4" :class="debtModal.is_edit ? 'neon-text-amber' : 'neon-text-cyan'">
+          <span x-text="debtModal.is_edit ? '✎ Edit Entry' : (debtModal.is_receivable ? 'Record Repayment Received' : 'Record Payment')"></span>
+        </h3>
         <form @submit.prevent="saveDebtEntry(); closeModal()" class="space-y-4">
           <div>
-            <label class="block text-xs text-slate-500 mb-1">Sub-Category</label>
-            <select x-model="debtModal.subcategory_id" class="input-cyber text-xs" required>
+            <label class="block text-xs text-slate-500 mb-1">Loan Account</label>
+            <select x-model="debtModal.subcategory_id" @change="autoFillOutstanding()" class="input-cyber text-xs" required>
               <option value="">— Select —</option>
               <template x-for="s in subcategories.filter(s => s.pillar_name === 'DEBT')" :key="s.id">
                 <option :value="s.id" x-text="s.name"></option>
               </template>
             </select>
           </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs text-slate-500 mb-1">Year</label>
-              <input type="number" x-model="debtModal.year" class="input-cyber text-xs" required>
+          <div x-show="!debtModal.is_edit && !debtModal._paymentMode">
+            <label class="block text-xs text-slate-500 mb-2">Type</label>
+            <div class="flex gap-3">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" x-model="debtModal.is_receivable" :value="false" class="accent-rose-500">
+                <span class="text-xs text-slate-300">I am paying my loan</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" x-model="debtModal.is_receivable" :value="true" class="accent-emerald-500">
+                <span class="text-xs text-slate-300">Someone is paying me back</span>
+              </label>
             </div>
-            <div>
-              <label class="block text-xs text-slate-500 mb-1">Month</label>
-              <select x-model="debtModal.month" class="input-cyber text-xs" required>
-                <template x-for="(mName, idx) in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']">
-                  <option :value="idx+1" x-text="mName"></option>
-                </template>
-              </select>
-            </div>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Date</label>
+            <input type="date" x-model="debtModal.date" class="input-cyber text-xs" required>
           </div>
           <div>
             <label class="block text-xs text-slate-500 mb-1">Outstanding Balance (₱)</label>
-            <input type="number" step="0.01" x-model="debtModal.outstanding_balance" class="input-cyber text-xs" required>
+            <input type="number" step="0.01" x-model="debtModal.outstanding_balance" @change="markManualOverride()" :disabled="debtModal.payment_made > 0" class="input-cyber text-xs" required placeholder="e.g. 10000.00">
+            <p class="text-[10px] text-slate-600 mt-1" x-text="debtModal.is_receivable ? 'Remaining balance they still owe you.' : 'Remaining balance you still owe.'"></p>
           </div>
           <div>
-            <label class="block text-xs text-slate-500 mb-1">Payment Made (₱)</label>
-            <input type="number" step="0.01" x-model="debtModal.payment_made" class="input-cyber text-xs">
+            <label class="block text-xs text-slate-500 mb-1">
+              <span x-text="debtModal.is_receivable ? 'Amount Received (₱)' : 'Amount Paid (₱)'"></span>
+            </label>
+            <input type="number" step="0.01" x-model="debtModal.payment_made" @input="autoFillOutstanding()" class="input-cyber text-xs" placeholder="e.g. 2000.00">
+            <p class="text-[10px] text-slate-600 mt-1" x-text="debtModal.is_receivable ? 'Auto-logs as INCOME (green) in the Ledger.' : 'Auto-logs as DEBT (red) in the Ledger.'"></p>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Payment Mode</label>
+            <select x-model="debtModal.payment_mode" class="input-cyber text-xs">
+              <option value="">— Select —</option>
+              <option value="Cash">Cash</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="GCash">GCash</option>
+              <option value="Maya">Maya</option>
+              <option value="Check">Check</option>
+              <option value="Credit Card">Credit Card</option>
+              <option value="Debit Card">Debit Card</option>
+              <option value="Other">Other</option>
+            </select>
           </div>
           <div class="flex gap-3 justify-end">
             <button type="button" @click="closeModal()" class="text-xs text-slate-500 hover:text-slate-300 px-4 py-2">Cancel</button>
-            <button type="submit" class="btn-cyber-rose text-xs">💾 Save</button>
+            <button type="submit" class="text-xs" :class="debtModal.is_edit ? 'btn-cyber-amber' : (debtModal.is_receivable ? 'btn-cyber-emerald' : 'btn-cyber-rose')">
+              <span x-text="debtModal.is_edit ? '✎ Update' : '💾 Save'"></span>
+            </button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="debt-history"
+       x-show="modalOpen === 'debt-history'"
+       @keydown.escape.window="closeModal()"
+       class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm"
+       @click="closeModal()"
+       x-transition:enter="transition ease-out duration-300"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-200"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0">
+    <div class="w-full max-w-lg p-4" @click.stop>
+      <div class="glass-panel p-6 max-h-[70vh] overflow-y-auto">
+        <h3 class="text-sm font-mono neon-text-cyan mb-4">Payment History</h3>
+        <table class="table-cyber w-full" x-show="goalHistory.length > 0">
+          <thead><tr><th>Date</th><th>Detail</th><th>Amount</th><th>Mode</th><th></th></tr></thead>
+          <tbody>
+            <template x-for="txn in goalHistory" :key="txn.id">
+              <tr>
+                <td class="text-xs text-slate-400" x-text="txn.date"></td>
+                <td class="text-xs text-slate-300" x-text="txn.detail"></td>
+                <td class="text-xs font-mono neon-text-rose" x-text="'₱' + numberWithCommas(txn.amount)"></td>
+                <td class="text-xs text-slate-500" x-text="txn.payment_mode || '—'"></td>
+                <td>
+                  <button @click="deleteTransaction(txn.id); loadGoalHistory(txn.subcategory_id)"
+                          class="text-[10px] text-slate-600 hover:text-rose-400 transition-colors">✕</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <p class="text-slate-600 text-xs text-center py-8" x-show="goalHistory.length === 0">No payment history.</p>
+        <div class="flex justify-end mt-3">
+          <button @click="closeModal()" class="text-xs text-slate-500 hover:text-slate-300 px-4 py-2">Close</button>
+        </div>
       </div>
     </div>
   </div>

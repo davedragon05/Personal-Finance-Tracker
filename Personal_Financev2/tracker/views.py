@@ -1,12 +1,12 @@
+import csv
 import json
 from datetime import datetime, date
 from decimal import Decimal
-
 from functools import wraps
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum, Q
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -23,8 +23,19 @@ def ajax_login_required(view_func):
 
 from .models import (
     FinancialPillar, SubCategory, TransactionLog,
-    MonthlyBudgetTarget, SavingsGoal, DebtBalanceHistory
+    MonthlyBudgetTarget, SavingsGoal, DebtBalanceHistory,
+    RecurringTransaction, AuditLog, Account,
 )
+
+
+def log_audit(request, action, model_name, object_id=None, details=None):
+    AuditLog.objects.create(
+        user=request.user,
+        action=action,
+        model_name=model_name,
+        object_id=object_id,
+        details=details,
+    )
 
 
 @ensure_csrf_cookie
@@ -87,6 +98,9 @@ def api_transaction_create(request):
             category_id=body['category_id'],
             subcategory_id=body.get('subcategory_id'),
             card_credit_type_id=body.get('card_credit_type_id'),
+            account_id=body.get('account_id'),
+            payment_mode=body.get('payment_mode', ''),
+            debt_history_id=body.get('debt_history_id'),
         )
         return JsonResponse({
             'status': 'ok',
@@ -95,6 +109,7 @@ def api_transaction_create(request):
                 'detail': txn.detail, 'amount': str(txn.amount),
                 'category': txn.category.name if txn.category else None,
                 'subcategory': txn.subcategory.name if txn.subcategory else None,
+                'payment_mode': txn.payment_mode,
             }
         })
     except Exception as e:
@@ -104,21 +119,39 @@ def api_transaction_create(request):
 @ajax_login_required
 @require_http_methods(['GET'])
 def api_transactions(request):
-    qs = TransactionLog.objects.filter(user=request.user).select_related('category', 'subcategory')
+    qs = TransactionLog.objects.filter(user=request.user).select_related('category', 'subcategory', 'account')
     year = request.GET.get('year')
     month = request.GET.get('month')
     subcategory_id = request.GET.get('subcategory_id')
+    debt_history_id = request.GET.get('debt_history_id')
     if year:
         qs = qs.filter(date__year=int(year))
     if month:
         qs = qs.filter(date__month=int(month))
     if subcategory_id:
         qs = qs.filter(subcategory_id=int(subcategory_id))
-    limit = request.GET.get('limit', '100')
-    if limit != 'all':
-        qs = qs[:int(limit)]
+    if debt_history_id:
+        qs = qs.filter(debt_history_id=int(debt_history_id))
+    qs = qs.order_by('-date', '-created_at')
+
+    page = int(request.GET.get('page', 1))
+    page_size = int(request.GET.get('page_size', 0))
+    if page_size > 0:
+        total = qs.count()
+        start = (page - 1) * page_size
+        qs = qs[start:start + page_size]
+    else:
+        total = 0
+
+    debt_ids = [t.debt_history_id for t in qs if t.debt_history_id]
+    debt_map = {}
+    if debt_ids:
+        for d in DebtBalanceHistory.objects.filter(id__in=debt_ids).only('id', 'outstanding_balance', 'is_receivable'):
+            debt_map[d.id] = d
+
     data = []
     for t in qs:
+        debt_info = debt_map.get(t.debt_history_id) if t.debt_history_id else None
         data.append({
             'id': t.id, 'date': str(t.date), 'detail': t.detail,
             'amount': str(t.amount),
@@ -126,7 +159,15 @@ def api_transactions(request):
             'category_id': t.category_id,
             'subcategory': t.subcategory.name if t.subcategory else None,
             'subcategory_id': t.subcategory_id,
+            'card_credit_type': t.card_credit_type.name if t.card_credit_type else None,
+            'account': t.account.name if t.account else None,
+            'account_id': t.account_id,
+            'payment_mode': t.payment_mode,
+            'debt_history_id': t.debt_history_id,
+            'debt_outstanding_balance': str(debt_info.outstanding_balance) if debt_info else None,
         })
+    if page_size > 0:
+        return JsonResponse({'results': data, 'count': total, 'page': page, 'page_size': page_size})
     return JsonResponse(data, safe=False)
 
 
@@ -135,7 +176,9 @@ def api_transactions(request):
 def api_transaction_delete(request, txn_id):
     try:
         txn = TransactionLog.objects.get(id=txn_id, user=request.user)
-        txn.delete()
+        txn.is_deleted = True
+        txn.save(update_fields=['is_deleted'])
+        log_audit(request, 'delete', 'TransactionLog', txn_id)
         return JsonResponse({'status': 'ok'})
     except TransactionLog.DoesNotExist:
         return JsonResponse({'status': 'error', 'message': 'Not found'}, status=404)
@@ -157,12 +200,15 @@ def api_transaction_update(request, txn_id):
             txn.category_id = body['category_id']
         if 'subcategory_id' in body:
             txn.subcategory_id = body['subcategory_id']
+        if 'payment_mode' in body:
+            txn.payment_mode = body['payment_mode']
         txn.save()
         return JsonResponse({'status': 'ok', 'transaction': {
             'id': txn.id, 'date': str(txn.date), 'detail': txn.detail,
             'amount': str(txn.amount),
             'category': txn.category.name if txn.category else None,
             'subcategory': txn.subcategory.name if txn.subcategory else None,
+            'payment_mode': txn.payment_mode,
         }})
     except TransactionLog.DoesNotExist:
         return JsonResponse({'status': 'error', 'message': 'Not found'}, status=404)
@@ -412,10 +458,24 @@ def api_chart_data(request):
         ).aggregate(s=Sum('amount'))['s'] or 0
         debt_data.append(float(d))
 
+    net_worth = []
+    cumulative = 0
+    savings_pillar = FinancialPillar.objects.get(name='SAVINGS_INVESTMENTS')
+    for m in months:
+        inc = income_data[m - 1]
+        exp = expense_data[m - 1]
+        sav = TransactionLog.objects.filter(
+            user=request.user, date__year=year, date__month=m,
+            category=savings_pillar
+        ).aggregate(s=Sum('amount'))['s'] or 0
+        cumulative += inc - exp
+        net_worth.append(round(cumulative - debt_data[m - 1] + float(sav), 2))
+
     return JsonResponse({
         'income_vs_expenses': {'labels': list(range(1, 13)), 'income': income_data, 'expenses': expense_data},
         'expense_dispersal': {'labels': expense_labels, 'values': expense_values},
         'debt_track': {'labels': list(range(1, 13)), 'debt': debt_data},
+        'net_worth_over_time': {'labels': list(range(1, 13)), 'net_worth': net_worth},
     })
 
 
@@ -496,18 +556,23 @@ def api_savings_goal_update(request, goal_id):
 @ajax_login_required
 @require_http_methods(['GET'])
 def api_debt_history(request):
-    year = int(request.GET.get('year', datetime.now().year))
     qs = DebtBalanceHistory.objects.filter(
-        user=request.user, year=year
+        user=request.user
     ).select_related('subcategory')
+    year = request.GET.get('year')
+    if year:
+        qs = qs.filter(year=int(year))
     data = []
     for d in qs:
         data.append({
             'id': d.id, 'subcategory_id': d.subcategory_id,
             'subcategory_name': d.subcategory.name,
+            'date': d.date.isoformat(),
             'year': d.year, 'month': d.month,
             'outstanding_balance': str(d.outstanding_balance),
             'payment_made': str(d.payment_made),
+            'payment_mode': d.payment_mode,
+            'is_receivable': d.is_receivable,
         })
     return JsonResponse(data, safe=False)
 
@@ -517,17 +582,47 @@ def api_debt_history(request):
 def api_debt_history_update(request):
     try:
         body = json.loads(request.body)
-        obj, _ = DebtBalanceHistory.objects.update_or_create(
-            user=request.user,
-            subcategory_id=body['subcategory_id'],
-            year=body['year'],
-            month=body['month'],
-            defaults={
-                'outstanding_balance': body['outstanding_balance'],
-                'payment_made': body.get('payment_made', 0),
-            }
-        )
+        dt = body.get('date')
+        if not dt:
+            return JsonResponse({'status': 'error', 'message': 'date required'}, status=400)
+        if body.get('is_edit') and body.get('id'):
+            obj = DebtBalanceHistory.objects.get(id=body['id'], user=request.user)
+            obj.date = dt
+            obj.year = int(dt[:4])
+            obj.month = int(dt[5:7])
+            obj.outstanding_balance = body['outstanding_balance']
+            obj.payment_made = body.get('payment_made', 0)
+            obj.payment_mode = body.get('payment_mode', '')
+            obj.is_receivable = body.get('is_receivable', False)
+            obj.save()
+        else:
+            parsed_date = dt if isinstance(dt, str) else dt.isoformat()
+            obj, _ = DebtBalanceHistory.objects.update_or_create(
+                user=request.user,
+                subcategory_id=body['subcategory_id'],
+                date=parsed_date,
+                defaults={
+                    'year': int(parsed_date[:4]),
+                    'month': int(parsed_date[5:7]),
+                    'outstanding_balance': body['outstanding_balance'],
+                    'payment_made': body.get('payment_made', 0),
+                    'payment_mode': body.get('payment_mode', ''),
+                    'is_receivable': body.get('is_receivable', False),
+                }
+            )
         return JsonResponse({'status': 'ok', 'id': obj.id})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@ajax_login_required
+@require_http_methods(['POST'])
+def api_debt_history_delete(request):
+    try:
+        body = json.loads(request.body)
+        obj = DebtBalanceHistory.objects.get(id=body['id'], user=request.user)
+        obj.delete()
+        return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
@@ -601,3 +696,289 @@ def api_financial_pillars_summary(request):
             'total': str(total),
         })
     return JsonResponse(data, safe=False)
+
+
+@ajax_login_required
+def api_accounts(request):
+    if request.method == 'GET':
+        qs = Account.objects.filter(user=request.user)
+        data = []
+        for a in qs:
+            balance = TransactionLog.objects.filter(
+                user=request.user, account=a
+            ).aggregate(b=Sum('amount'))['b'] or 0
+            data.append({
+                'id': a.id,
+                'name': a.name,
+                'account_type': a.account_type,
+                'account_type_display': a.get_account_type_display(),
+                'opening_balance': str(a.opening_balance),
+                'balance': str(round(float(a.opening_balance) + float(balance), 2)),
+                'is_active': a.is_active,
+            })
+        return JsonResponse(data, safe=False)
+    elif request.method == 'POST':
+        try:
+            body = json.loads(request.body)
+            a = Account.objects.create(
+                user=request.user,
+                name=body['name'],
+                account_type=body.get('account_type', 'checking'),
+                opening_balance=body.get('opening_balance', 0),
+            )
+            log_audit(request, 'create', 'Account', a.id)
+            return JsonResponse({'status': 'ok', 'id': a.id})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@ajax_login_required
+@require_http_methods(['DELETE', 'POST'])
+def api_account_delete(request, account_id):
+    try:
+        a = Account.objects.get(id=account_id, user=request.user)
+        a.delete()
+        log_audit(request, 'delete', 'Account', account_id)
+        return JsonResponse({'status': 'ok'})
+    except Account.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Not found'}, status=404)
+
+
+@ajax_login_required
+def api_recurring_transactions(request):
+    if request.method == 'GET':
+        qs = RecurringTransaction.objects.filter(user=request.user).select_related('subcategory', 'subcategory__pillar')
+        data = []
+        for rt in qs:
+            data.append({
+                'id': rt.id,
+                'subcategory_id': rt.subcategory_id,
+                'subcategory_name': rt.subcategory.name,
+                'pillar_name': rt.subcategory.pillar.name,
+                'amount': str(rt.amount),
+                'detail': rt.detail,
+                'interval': rt.interval,
+                'next_due_date': str(rt.next_due_date),
+                'active': rt.active,
+            })
+        return JsonResponse(data, safe=False)
+    elif request.method == 'POST':
+        try:
+            body = json.loads(request.body)
+            rt = RecurringTransaction.objects.create(
+                user=request.user,
+                subcategory_id=body['subcategory_id'],
+                amount=body['amount'],
+                detail=body.get('detail', ''),
+                interval=body.get('interval', 'monthly'),
+                next_due_date=body['next_due_date'],
+            )
+            return JsonResponse({'status': 'ok', 'id': rt.id})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@ajax_login_required
+@require_http_methods(['DELETE', 'POST'])
+def api_recurring_transaction_delete(request, rt_id):
+    try:
+        rt = RecurringTransaction.objects.get(id=rt_id, user=request.user)
+        rt.delete()
+        return JsonResponse({'status': 'ok'})
+    except RecurringTransaction.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Not found'}, status=404)
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_audit_log(request):
+    qs = AuditLog.objects.filter(user=request.user)[:50]
+    data = []
+    for log in qs:
+        data.append({
+            'action': log.action,
+            'model_name': log.model_name,
+            'object_id': log.object_id,
+            'created_at': log.created_at.strftime('%Y-%m-%d %H:%M'),
+        })
+    return JsonResponse(data, safe=False)
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_backup_export(request):
+    from .models import Account, TransactionLog, MonthlyBudgetTarget, SavingsGoal, DebtBalanceHistory, RecurringTransaction, AuditLog
+    export = {
+        'version': 1,
+        'exported_at': datetime.now().isoformat(),
+        'accounts': list(Account.objects.filter(user=request.user).values('name', 'account_type', 'opening_balance', 'is_active')),
+        'transactions': list(TransactionLog.all_objects.filter(user=request.user).values('date', 'detail', 'amount', 'category_id', 'subcategory_id', 'account_id', 'is_deleted')),
+        'budget_targets': list(MonthlyBudgetTarget.objects.filter(user=request.user).values('subcategory_id', 'year', 'month', 'budgeted_amount')),
+        'savings_goals': list(SavingsGoal.objects.filter(user=request.user).values('subcategory_id', 'target_goal', 'starting_amount', 'monthly_contribution_target')),
+        'debt_history': list(DebtBalanceHistory.objects.filter(user=request.user).values('subcategory_id', 'year', 'month', 'outstanding_balance', 'payment_made')),
+        'recurring': list(RecurringTransaction.objects.filter(user=request.user).values('subcategory_id', 'amount', 'detail', 'interval', 'next_due_date', 'active')),
+    }
+    for key in ('accounts', 'transactions', 'budget_targets', 'savings_goals', 'debt_history', 'recurring'):
+        for item in export.get(key, []):
+            for k, v in item.items():
+                if isinstance(v, date):
+                    item[k] = str(v)
+                elif isinstance(v, Decimal):
+                    item[k] = float(v)
+    response = JsonResponse(export)
+    response['Content-Disposition'] = f'attachment; filename="jarvis_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json"'
+    return response
+
+
+@ajax_login_required
+@require_http_methods(['POST'])
+def api_backup_import(request):
+    try:
+        body = json.loads(request.body)
+        from .models import Account, TransactionLog, MonthlyBudgetTarget, SavingsGoal, DebtBalanceHistory, RecurringTransaction
+        for a_data in body.get('accounts', []):
+            Account.objects.get_or_create(
+                user=request.user, name=a_data['name'],
+                defaults={'account_type': a_data.get('account_type', 'checking'), 'opening_balance': a_data.get('opening_balance', 0), 'is_active': a_data.get('is_active', True)}
+            )
+        txn_count = 0
+        for t_data in body.get('transactions', []):
+            TransactionLog.all_objects.create(
+                user=request.user,
+                date=date.fromisoformat(t_data['date']) if isinstance(t_data['date'], str) else t_data['date'],
+                detail=t_data.get('detail', ''),
+                amount=t_data['amount'],
+                category_id=t_data.get('category_id'),
+                subcategory_id=t_data.get('subcategory_id'),
+                account_id=t_data.get('account_id'),
+                is_deleted=t_data.get('is_deleted', False),
+            )
+            txn_count += 1
+        for b_data in body.get('budget_targets', []):
+            MonthlyBudgetTarget.objects.get_or_create(
+                user=request.user,
+                subcategory_id=b_data['subcategory_id'],
+                year=b_data['year'],
+                month=b_data['month'],
+                defaults={'budgeted_amount': b_data.get('budgeted_amount', 0)}
+            )
+        for s_data in body.get('savings_goals', []):
+            SavingsGoal.objects.get_or_create(
+                user=request.user,
+                subcategory_id=s_data['subcategory_id'],
+                defaults={
+                    'target_goal': s_data['target_goal'],
+                    'starting_amount': s_data.get('starting_amount', 0),
+                    'monthly_contribution_target': s_data.get('monthly_contribution_target', 0),
+                }
+            )
+        for d_data in body.get('debt_history', []):
+            DebtBalanceHistory.objects.get_or_create(
+                user=request.user,
+                subcategory_id=d_data['subcategory_id'],
+                year=d_data['year'],
+                month=d_data['month'],
+                defaults={
+                    'outstanding_balance': d_data['outstanding_balance'],
+                    'payment_made': d_data.get('payment_made', 0),
+                }
+            )
+        for r_data in body.get('recurring', []):
+            RecurringTransaction.objects.get_or_create(
+                user=request.user,
+                subcategory_id=r_data['subcategory_id'],
+                amount=r_data['amount'],
+                defaults={
+                    'detail': r_data.get('detail', ''),
+                    'interval': r_data.get('interval', 'monthly'),
+                    'next_due_date': date.fromisoformat(r_data['next_due_date']) if isinstance(r_data['next_due_date'], str) else r_data['next_due_date'],
+                    'active': r_data.get('active', True),
+                }
+            )
+        log_audit(request, 'import', 'Backup', details={'transactions': txn_count})
+        return JsonResponse({'status': 'ok', 'transactions_imported': txn_count})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@ajax_login_required
+@require_http_methods(['POST'])
+def api_transactions_import_csv(request):
+    try:
+        import csv, io
+        file = request.FILES.get('file')
+        if not file:
+            return JsonResponse({'status': 'error', 'message': 'No file uploaded'}, status=400)
+        decoded = file.read().decode('utf-8-sig')
+        reader = csv.DictReader(io.StringIO(decoded))
+        created = 0
+        for row in reader:
+            raw_date = row.get('Date', '').strip()
+            if not raw_date:
+                continue
+            try:
+                parsed_date = date.fromisoformat(raw_date)
+            except ValueError:
+                for fmt in ('%m/%d/%Y', '%d/%m/%Y', '%m-%d-%Y', '%Y-%m-%d'):
+                    try:
+                        parsed_date = datetime.strptime(raw_date, fmt).date()
+                        break
+                    except ValueError:
+                        pass
+                else:
+                    continue
+            detail = row.get('Detail', row.get('Description', '')).strip()
+            raw_amount = row.get('Amount', '0').strip().replace(',', '').replace('₱', '').replace('PHP', '')
+            try:
+                amount = float(raw_amount)
+            except ValueError:
+                continue
+            raw_category = row.get('Category', row.get('Pillar', '')).strip().upper()
+            pillar = None
+            subcategory = None
+            if raw_category:
+                pillar = FinancialPillar.objects.filter(name=raw_category).first()
+                raw_sub = row.get('Subcategory', '').strip()
+                if pillar and raw_sub:
+                    subcategory = SubCategory.objects.filter(
+                        user=request.user, pillar=pillar, name__iexact=raw_sub
+                    ).first()
+            TransactionLog.objects.create(
+                user=request.user,
+                date=parsed_date,
+                detail=detail,
+                amount=amount,
+                category=pillar,
+                subcategory=subcategory,
+                payment_mode=row.get('Payment Mode', row.get('payment_mode', '')).strip(),
+            )
+            created += 1
+        return JsonResponse({'status': 'ok', 'created': created})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_transactions_export_csv(request):
+    year = request.GET.get('year')
+    month = request.GET.get('month')
+    qs = TransactionLog.objects.filter(user=request.user).select_related('category', 'subcategory', 'account')
+    if year:
+        qs = qs.filter(date__year=int(year))
+    if month:
+        qs = qs.filter(date__month=int(month))
+    qs = qs.order_by('date', 'created_at')
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="transactions_{year or "all"}_{month or "all"}.csv"'
+    writer = csv.writer(response)
+    writer.writerow(['Date', 'Detail', 'Amount', 'Category', 'Subcategory', 'Payment Mode'])
+    for t in qs:
+        writer.writerow([
+            t.date, t.detail, str(t.amount),
+            t.category.name if t.category else '',
+            t.subcategory.name if t.subcategory else '',
+            t.payment_mode,
+        ])
+    return response

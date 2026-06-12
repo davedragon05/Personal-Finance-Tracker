@@ -17,6 +17,10 @@
     <div class="h-full bg-gradient-to-r from-cyan-400 via-emerald-400 to-cyan-400 animate-loading-bar"></div>
   </div>
 
+  <button id="scroll-top-btn" x-show="showScrollBtn" @click="document.querySelector('main').scrollTo({ top: 0, behavior: 'smooth' })" x-transition.opacity.duration.300ms class="fixed bottom-6 right-6 z-[200] w-10 h-10 rounded-full bg-slate-800 border border-cyan-500/60 text-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.25)] hover:bg-cyan-600/40 hover:shadow-[0_0_16px_rgba(34,211,238,0.4)] transition-all flex items-center justify-center cursor-pointer">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M10 16V4M5 9l5-5 5 5"/></svg>
+  </button>
+
   <div class="flex h-screen overflow-hidden">
     {% include 'tracker/sidebar.html' %}
 

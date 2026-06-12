@@ -1,8 +1,22 @@
 <div class="space-y-6">
   <h2 class="text-lg font-mono neon-text-cyan">⚙ CORE SYSTEM SETTINGS</h2>
 
-  <div class="glass-panel p-5">
-    <h3 class="text-sm font-mono text-slate-400 mb-4">Manage Sub-Categories</h3>
+  <div class="flex flex-wrap gap-2 glass-panel p-3">
+    <span class="text-[10px] text-slate-500 self-center mr-2">Quick:</span>
+    <button @click="document.getElementById('sec-subcategories').scrollIntoView({ behavior: 'smooth' })" class="text-[10px] px-2.5 py-1 rounded bg-slate-800/60 text-cyan-400 hover:bg-cyan-900/30 border border-cyan-500/20 transition-all">Sub-Categories</button>
+    <button @click="document.getElementById('sec-recurring').scrollIntoView({ behavior: 'smooth' })" class="text-[10px] px-2.5 py-1 rounded bg-slate-800/60 text-emerald-400 hover:bg-emerald-900/30 border border-emerald-500/20 transition-all">Recurring</button>
+    <button @click="document.getElementById('sec-accounts').scrollIntoView({ behavior: 'smooth' })" class="text-[10px] px-2.5 py-1 rounded bg-slate-800/60 text-amber-400 hover:bg-amber-900/30 border border-amber-500/20 transition-all">Accounts</button>
+    <button @click="document.getElementById('sec-security').scrollIntoView({ behavior: 'smooth' })" class="text-[10px] px-2.5 py-1 rounded bg-slate-800/60 text-purple-400 hover:bg-purple-900/30 border border-purple-500/20 transition-all">Security</button>
+    <button @click="document.getElementById('sec-backup').scrollIntoView({ behavior: 'smooth' })" class="text-[10px] px-2.5 py-1 rounded bg-slate-800/60 text-rose-400 hover:bg-rose-900/30 border border-rose-500/20 transition-all">Backup</button>
+    <button @click="document.getElementById('sec-audit').scrollIntoView({ behavior: 'smooth' })" class="text-[10px] px-2.5 py-1 rounded bg-slate-800/60 text-slate-400 hover:bg-slate-700/50 border border-slate-600/20 transition-all">Audit Log</button>
+  </div>
+
+  <div class="glass-panel p-5" id="sec-subcategories">
+    <div class="flex items-center gap-3 mb-5">
+      <span class="w-1 h-5 bg-cyan-400 rounded-full shadow-[0_0_6px_rgba(34,211,238,0.5)]"></span>
+      <h3 class="text-sm font-mono neon-text-cyan">Manage Sub-Categories</h3>
+      <span class="text-[10px] text-slate-600 ml-auto" x-text="subcategories.length + ' total'"></span>
+    </div>
     <form @submit.prevent="addSubCategory()" class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
       <select x-model="newSubCategory.pillar_id" class="input-cyber text-xs py-2" required>
         <option value="">Select Pillar</option>
@@ -62,8 +76,163 @@
     </div>
   </div>
 
+  <div class="glass-panel p-5" id="sec-recurring">
+    <div class="flex items-center gap-3 mb-5">
+      <span class="w-1 h-5 bg-emerald-400 rounded-full shadow-[0_0_6px_rgba(52,211,153,0.5)]"></span>
+      <h3 class="text-sm font-mono neon-text-emerald">Recurring Transactions</h3>
+      <span class="text-[10px] text-slate-600 ml-auto" x-text="recurringList.length + ' active'"></span>
+    </div>
+    <form @submit.prevent="addRecurring()" class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
+      <select x-model="recurringForm.subcategory_id" class="input-cyber text-xs py-2" required>
+        <option value="">Select Sub-Category</option>
+        <template x-for="s in subcategories" :key="s.id">
+          <option :value="s.id" x-text="s.name"></option>
+        </template>
+      </select>
+      <input type="number" step="0.01" x-model="recurringForm.amount" class="input-cyber text-xs py-2" placeholder="Amount" required>
+      <input type="text" x-model="recurringForm.detail" class="input-cyber text-xs py-2" placeholder="Detail">
+      <input type="date" x-model="recurringForm.next_due_date" class="input-cyber text-xs py-2" required>
+      <button type="submit" class="btn-cyber text-xs py-2">＋ Add Recurring</button>
+    </form>
+    <div class="overflow-x-auto">
+      <table class="table-cyber w-full">
+        <thead>
+          <tr>
+            <th>Sub-Category</th>
+            <th>Amount</th>
+            <th>Detail</th>
+            <th>Next Due</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="rt in recurringList" :key="rt.id">
+            <tr>
+              <td class="text-xs text-slate-300" x-text="rt.subcategory_name"></td>
+              <td class="text-xs font-mono neon-text-rose" x-text="'₱' + numberWithCommas(rt.amount)"></td>
+              <td class="text-xs text-slate-500" x-text="rt.detail || '—'"></td>
+              <td class="text-xs text-slate-400" x-text="rt.next_due_date"></td>
+              <td>
+                <button @click="deleteRecurring(rt.id)"
+                        class="text-xs text-slate-600 hover:text-rose-400 transition-colors">✕</button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="recurringList.length === 0">
+            <td colspan="5" class="text-center text-slate-600 py-8">No recurring transactions</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="glass-panel p-5" id="sec-accounts">
+    <div class="flex items-center gap-3 mb-5">
+      <span class="w-1 h-5 bg-amber-400 rounded-full shadow-[0_0_6px_rgba(251,191,36,0.5)]"></span>
+      <h3 class="text-sm font-mono text-amber-400">Accounts</h3>
+    </div>
+    <form @submit.prevent="addAccount()" class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+      <input type="text" x-model="accountForm.name" class="input-cyber text-xs py-2" placeholder="Account name" required>
+      <select x-model="accountForm.account_type" class="input-cyber text-xs py-2">
+        <option value="checking">Checking</option>
+        <option value="savings">Savings</option>
+        <option value="credit">Credit Card</option>
+        <option value="cash">Cash</option>
+        <option value="investment">Investment</option>
+      </select>
+      <input type="number" step="0.01" x-model="accountForm.opening_balance" class="input-cyber text-xs py-2" placeholder="Opening balance">
+      <button type="submit" class="btn-cyber text-xs py-2">＋ Add Account</button>
+    </form>
+    <div class="overflow-x-auto">
+      <table class="table-cyber w-full">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Balance</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="a in accounts" :key="a.id">
+            <tr>
+              <td class="text-xs text-slate-300" x-text="a.name"></td>
+              <td><span class="text-[10px] text-slate-500" x-text="a.account_type_display"></span></td>
+              <td class="text-xs font-mono" :class="parseFloat(a.balance) >= 0 ? 'neon-text-emerald' : 'neon-text-rose'" x-text="'₱' + numberWithCommas(a.balance)"></td>
+              <td>
+                <button @click="deleteAccount(a.id)" class="text-xs text-slate-600 hover:text-rose-400 transition-colors">✕</button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="accounts.length === 0">
+            <td colspan="4" class="text-center text-slate-600 py-8">No accounts configured</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="glass-panel p-5" id="sec-security">
+    <div class="flex items-center gap-3 mb-5">
+      <span class="w-1 h-5 bg-purple-400 rounded-full shadow-[0_0_6px_rgba(167,139,250,0.5)]"></span>
+      <h3 class="text-sm font-mono text-purple-400">Account Security</h3>
+    </div>
+    <a href="/password-change/" class="btn-cyber text-xs inline-flex items-center gap-2"><span class="text-cyan-400">🔑</span> Change Password</a>
+  </div>
+
+  <div class="glass-panel p-5" id="sec-backup">
+    <div class="flex items-center gap-3 mb-5">
+      <span class="w-1 h-5 bg-rose-400 rounded-full shadow-[0_0_6px_rgba(251,113,133,0.5)]"></span>
+      <h3 class="text-sm font-mono text-rose-400">Backup & Restore</h3>
+    </div>
+    <div class="flex flex-wrap gap-3">
+      <button @click="backupExport()" class="btn-cyber text-xs inline-flex items-center gap-2">⬇ Export All Data</button>
+      <label class="btn-cyber text-xs inline-flex items-center gap-2 cursor-pointer">
+        ⬆ Restore from File
+        <input type="file" accept=".json" class="hidden" @change="backupImport($event)">
+      </label>
+    </div>
+    <p class="text-[10px] text-slate-600 mt-3">Exports all transactions, budgets, goals, debt history, recurring rules, and accounts as JSON.</p>
+  </div>
+
+  <div class="glass-panel p-5" id="sec-audit">
+    <div class="flex items-center gap-3 mb-5">
+      <span class="w-1 h-5 bg-slate-500 rounded-full"></span>
+      <h3 class="text-sm font-mono text-slate-400">Audit Log</h3>
+      <span class="text-[10px] text-slate-600 ml-auto">Last 50 events</span>
+    </div>
+    <div class="overflow-x-auto max-h-48 overflow-y-auto">
+      <table class="table-cyber w-full">
+        <thead>
+          <tr>
+            <th>Action</th>
+            <th>Model</th>
+            <th>ID</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="log in auditLogs" :key="log.created_at + log.action">
+            <tr>
+              <td><span class="text-[10px]" :class="log.action === 'delete' ? 'text-rose-400' : 'text-emerald-400'" x-text="log.action"></span></td>
+              <td class="text-[10px] text-slate-500" x-text="log.model_name"></td>
+              <td class="text-[10px] text-slate-600" x-text="log.object_id || '—'"></td>
+              <td class="text-[10px] text-slate-600" x-text="log.created_at"></td>
+            </tr>
+          </template>
+          <tr x-show="auditLogs.length === 0">
+            <td colspan="4" class="text-center text-slate-600 py-4 text-[10px]">No events recorded</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="glass-panel p-5">
-    <h3 class="text-sm font-mono text-slate-400 mb-4">System Information</h3>
+    <div class="flex items-center gap-3 mb-5">
+      <span class="w-1 h-5 bg-slate-500 rounded-full"></span>
+      <h3 class="text-sm font-mono text-slate-400">System Information</h3>
+    </div>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
       <div class="space-y-2">
         <div class="flex justify-between"><span class="text-slate-500">Database</span><span class="text-slate-300">PostgreSQL</span></div>

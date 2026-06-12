@@ -8,16 +8,34 @@
 
   <div class="glass-panel p-5">
     <div class="flex gap-3 mb-4 flex-wrap">
-      <select x-model="filter.year" @change="loadTransactions()" class="input-cyber w-28 text-xs py-1.5">
+      <select x-model="filter.year" @change="txnPage = 1; loadTransactions()" class="input-cyber w-28 text-xs py-1.5">
         <template x-for="y in [2024,2025,2026,2027,2028]">
           <option :value="y" x-text="y"></option>
         </template>
       </select>
-      <select x-model="filter.month" @change="loadTransactions()" class="input-cyber w-32 text-xs py-1.5">
+      <select x-model="filter.month" @change="txnPage = 1; loadTransactions()" class="input-cyber w-32 text-xs py-1.5">
         <template x-for="(mName, idx) in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']">
           <option :value="idx+1" x-text="mName"></option>
         </template>
       </select>
+      <a :href="'/api/transactions/export/csv/?year=' + filter.year + '&month=' + filter.month"
+         class="btn-cyber text-xs py-1.5">⬇ CSV</a>
+      <label class="btn-cyber text-xs py-1.5 cursor-pointer">
+        ⬆ Import CSV
+        <input type="file" accept=".csv" class="hidden" @change="importCSV($event)">
+      </label>
+    </div>
+
+    <div class="flex items-center justify-between mb-3" x-show="txnTotal > txnPageSize">
+      <span class="text-[10px] text-slate-600" x-text="'Showing ' + Math.min(txnPage * txnPageSize, txnTotal) + ' of ' + txnTotal"></span>
+      <div class="flex gap-2">
+        <button @click="txnPage = Math.max(1, txnPage - 1); loadTransactions()"
+                :disabled="txnPage <= 1"
+                class="text-xs text-slate-600 hover:text-cyan-400 disabled:text-slate-800 disabled:cursor-not-allowed transition-colors">← Prev</button>
+        <button @click="txnPage = Math.min(Math.ceil(txnTotal / txnPageSize), txnPage + 1); loadTransactions()"
+                :disabled="txnPage >= Math.ceil(txnTotal / txnPageSize)"
+                class="text-xs text-slate-600 hover:text-cyan-400 disabled:text-slate-800 disabled:cursor-not-allowed transition-colors">Next →</button>
+      </div>
     </div>
 
     <div class="overflow-x-auto">
@@ -28,13 +46,17 @@
             <th>Detail</th>
             <th>Category</th>
             <th>Subcategory</th>
+            <th>Account</th>
+            <th>Mode</th>
             <th>Amount</th>
+            <th>Balance</th>
+            <th>Loan Bal</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <template x-for="txn in transactions" :key="txn.id">
-            <tr class="hover:scale-[1.005] transition-all duration-200">
+            <tr class="hover:bg-slate-800/40 hover:border-l-2 hover:border-cyan-400 transition-all duration-200">
               <td class="text-slate-400" x-text="txn.date"></td>
               <td x-text="txn.detail"></td>
               <td>
@@ -43,19 +65,39 @@
                       x-text="txn.category || '—'"></span>
               </td>
               <td class="text-slate-400 text-xs" x-text="txn.subcategory || '—'"></td>
+              <td class="text-[10px] text-slate-600" x-text="txn.account_name || '—'"></td>
+              <td class="text-[10px] text-slate-500" x-text="txn.payment_mode || '—'"></td>
               <td class="text-right font-mono"
                   :class="['INCOME'].includes(txn.category) ? 'neon-text-emerald' : 'neon-text-rose'"
                   x-text="'₱' + numberWithCommas(txn.amount)"></td>
+              <td class="text-right font-mono text-[10px]"
+                  :class="runningBalance(txn.id) >= 0 ? 'text-emerald-500' : 'text-rose-500'"
+                  x-text="'₱' + numberWithCommas(runningBalance(txn.id))"></td>
+              <td class="text-right font-mono text-[10px]"
+                  :class="txn.debt_outstanding_balance !== null ? (txn.category === 'INCOME' ? 'text-emerald-500' : 'text-rose-500') : 'text-slate-600'"
+                  x-text="txn.debt_outstanding_balance !== null ? '₱' + numberWithCommas(txn.debt_outstanding_balance) : '—'"></td>
               <td>
-                <button @click="deleteTransaction(txn.id)"
-                        class="text-xs text-slate-600 hover:text-rose-400 transition-colors">
-                  ✕
-                </button>
+                <div class="flex gap-2">
+                  <button @click="cloneTransaction(txn)"
+                          class="text-xs text-slate-600 hover:text-cyan-400 transition-colors">
+                    ⧉
+                  </button>
+                  <button x-show="!txn.debt_history_id && txn.category !== 'SAVINGS_INVESTMENTS'"
+                          @click="editTxn = { id: txn.id, date: txn.date, detail: txn.detail, amount: txn.amount, category_id: txn.category_id, subcategory_id: txn.subcategory_id, payment_mode: txn.payment_mode || '' }; loadSubcategories(txn.category_id); openModal('edit-txn-modal')"
+                          class="text-xs text-slate-600 hover:text-amber-400 transition-colors">
+                    ✎
+                  </button>
+                  <button x-show="!txn.debt_history_id && txn.category !== 'SAVINGS_INVESTMENTS'"
+                          @click="deleteTransaction(txn.id)"
+                          class="text-xs text-slate-600 hover:text-rose-400 transition-colors">
+                    ✕
+                  </button>
+                </div>
               </td>
             </tr>
           </template>
           <tr x-show="transactions.length === 0">
-            <td colspan="6" class="text-center text-slate-600 py-8">No transactions recorded</td>
+            <td colspan="10" class="text-center text-slate-600 py-8">No transactions recorded</td>
           </tr>
         </tbody>
       </table>
@@ -109,9 +151,102 @@
               </template>
             </select>
           </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Account</label>
+            <select x-model="form.account_id" class="input-cyber text-xs">
+              <option value="">— Select Account —</option>
+              <template x-for="a in accounts" :key="a.id">
+                <option :value="a.id" x-text="a.name + ' (' + a.account_type_display + ')'"></option>
+              </template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Payment Mode</label>
+            <select x-model="form.payment_mode" class="input-cyber text-xs">
+              <option value="">— Select —</option>
+              <option value="Cash">Cash</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="GCash">GCash</option>
+              <option value="Maya">Maya</option>
+              <option value="Check">Check</option>
+              <option value="Credit Card">Credit Card</option>
+              <option value="Debit Card">Debit Card</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
           <div class="flex gap-3 justify-end">
             <button type="button" @click="closeModal()" class="text-xs text-slate-500 hover:text-slate-300 px-4 py-2">Cancel</button>
             <button type="submit" class="btn-cyber-emerald text-xs">⏎ Execute Entry</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="edit-txn-modal"
+       x-show="modalOpen === 'edit-txn-modal'"
+       @keydown.escape.window="closeModal()"
+       class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm"
+       @click="closeModal()"
+       x-transition:enter="transition ease-out duration-300"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-200"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0">
+    <div class="w-full max-w-lg p-4" @click.stop>
+      <div class="glass-panel p-6">
+        <h3 class="text-sm font-mono neon-text-amber mb-4">Edit Transaction</h3>
+        <form @submit.prevent="editTransaction(editTxn.id); closeModal()" class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Date</label>
+              <input type="date" x-model="editTxn.date" class="input-cyber text-xs" required>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Amount (₱)</label>
+              <input type="number" step="0.01" x-model="editTxn.amount" class="input-cyber text-xs" required>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Detail</label>
+            <input type="text" x-model="editTxn.detail" class="input-cyber text-xs">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Financial Pillar</label>
+            <select x-model="editTxn.category_id" @change="loadSubcategories(editTxn.category_id)" class="input-cyber text-xs" required>
+              <option value="">— Select Pillar —</option>
+              <template x-for="p in pillars" :key="p.id">
+                <option :value="p.id" x-text="p.display"></option>
+              </template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Sub-Category</label>
+            <select x-model="editTxn.subcategory_id" class="input-cyber text-xs">
+              <option value="">— Select Sub-Category —</option>
+              <template x-for="s in getFilteredSubcategoriesForEdit()" :key="s.id">
+                <option :value="s.id" x-text="s.name"></option>
+              </template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Payment Mode</label>
+            <select x-model="editTxn.payment_mode" class="input-cyber text-xs">
+              <option value="">— Select —</option>
+              <option value="Cash">Cash</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="GCash">GCash</option>
+              <option value="Maya">Maya</option>
+              <option value="Check">Check</option>
+              <option value="Credit Card">Credit Card</option>
+              <option value="Debit Card">Debit Card</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="flex gap-3 justify-end">
+            <button type="button" @click="closeModal()" class="text-xs text-slate-500 hover:text-slate-300 px-4 py-2">Cancel</button>
+            <button type="submit" class="btn-cyber-amber text-xs">✎ Update Transaction</button>
           </div>
         </form>
       </div>
