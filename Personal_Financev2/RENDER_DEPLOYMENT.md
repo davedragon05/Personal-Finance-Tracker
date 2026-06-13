@@ -114,7 +114,12 @@ else:
 
 ### Static Files (CSS, JS, Images)
 
-Normally Django doesn't serve static files in production. We add WhiteNoise — a tool that DOES serve them.
+Normally Django doesn't serve static files in production. We add **WhiteNoise** — a tool that DOES serve them.
+
+**Important:** You must install WhiteNoise locally too for `runserver` to work:
+```powershell
+pip install whitenoise
+```
 
 ```python
 # In MIDDLEWARE — add WhiteNoise right after SecurityMiddleware
@@ -262,6 +267,42 @@ To run locally again, just use `python manage.py runserver` as usual. Django wil
 
 ---
 
+## ⏰ Free PostgreSQL Expiry Warning
+
+Render's free PostgreSQL database **expires after 90 days**. After that, Render deletes it completely.
+
+### How to know when it expires
+Go to your **PostgreSQL dashboard** → **Settings** → look for **Expiry Date**.
+
+### What happens when it expires
+- All your data is **permanently deleted**
+- Your web app will show database errors
+- You need to create a **new** PostgreSQL database and restore your data
+
+### Option 1: Upgrade to paid (recommended)
+**PostgreSQL** → **Settings** → **Plan** → upgrade to **Starter ($7/month)** — no expiry, no data loss.
+
+### Option 2: Before expiry — backup your data
+```powershell
+# 1. Get your DB details from Render → PostgreSQL → Connect tab (External)
+# 2. Run this in your terminal:
+$env:PGPASSWORD = "your_db_password"
+pg_dump -h your-host.render.com -U your_username -d your_database -F c > backup.dump
+```
+This saves a `backup.dump` file to your computer.
+
+### Option 3: After expiry — start fresh
+1. Create a **new PostgreSQL** on Render (**New +** → **PostgreSQL**)
+2. Go to **Web Service** → **Environment** → update `DATABASE_URL` with the new connection string
+3. Run migrations locally (Step 5) to create fresh tables
+4. Create a new superuser
+5. **Manual Deploy** on Render
+
+### Important: pgAdmin stays the same
+When you get a new database, just update the connection details in your existing pgAdmin server — right-click the server → **Properties** → **Connection** tab. No need to create a new server.
+
+---
+
 ## ❓ Common Issues
 
 **"Build fails — requirements.txt not found"**
@@ -275,3 +316,77 @@ To run locally again, just use `python manage.py runserver` as usual. Django wil
 
 **"App loads but no CSS styling"**
 → Run `collectstatic` during build (it's in the Build Command already)
+
+---
+
+## 🔄 How to Update Your App After Changes
+
+Every time you update your code (new features, bug fixes, etc.):
+
+1. Make your changes locally
+2. Commit and push to GitHub:
+   ```powershell
+   git add .
+   git commit -m "Describe what you changed"
+   git push
+   ```
+3. Go to **Render Dashboard** → **Web Service** (`jarvis-finance`)
+4. Click **Manual Deploy** → **Deploy latest commit**
+5. Wait for the build to finish — watch live in the **Logs** tab
+
+Render automatically pulls the latest code from GitHub, installs dependencies, collects static files, and restarts your app.
+
+---
+
+## 📋 How to Check Logs (Debug Errors)
+
+When something breaks, logs tell you what went wrong.
+
+1. Go to your **Web Service** dashboard
+2. Click the **Logs** tab
+3. You'll see real-time output — errors appear in red
+
+**Common things to look for in logs:**
+
+| If you see... | Problem |
+|--------------|---------|
+| `ModuleNotFoundError` | Missing package in `requirements.txt` |
+| `OperationalError: could not connect to server` | `DATABASE_URL` is missing or wrong |
+| `DisallowedHost` | `ALLOWED_HOSTS` doesn't include your URL |
+| `No such table` | Migrations haven't been run |
+
+You can also download logs for the last 500 lines if needed.
+
+---
+
+## 🌐 Custom Domain (Optional)
+
+Instead of `jarvis-finance.onrender.com`, you can use your own domain like `www.myfinanceapp.com`.
+
+### Steps:
+1. Buy a domain from **Namecheap**, **GoDaddy**, **Cloudflare**, etc.
+2. In **Render** → **Web Service** → **Settings** → **Custom Domain**
+3. Enter your domain (e.g., `myfinanceapp.com`)
+4. Render will show you **DNS records** to add at your domain provider
+5. Go to your domain provider's DNS settings and add those records
+6. Wait a few minutes for DNS to propagate
+7. Update `ALLOWED_HOSTS` env var to include your new domain:
+   ```
+   .onrender.com,jarvis-finance.onrender.com,myfinanceapp.com,www.myfinanceapp.com
+   ```
+8. Update `CSRF_TRUSTED_ORIGINS` env var:
+   ```
+   https://jarvis-finance.onrender.com,https://myfinanceapp.com,https://www.myfinanceapp.com
+   ```
+9. **Manual Deploy** to apply changes
+
+---
+
+## 💸 Cost Summary
+
+| Service | Free | Paid |
+|---------|------|------|
+| **Web Service** | Free (sleeps after inactivity) | $7/month (always awake) |
+| **PostgreSQL** | Free for 90 days, then expired | $7/month (no expiry) |
+
+**Tip:** If you want the app always available without the 90-day limit, both on **Starter ($14/month total)**.
