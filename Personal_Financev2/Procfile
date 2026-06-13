@@ -1,1 +1,0 @@
-web: gunicorn Personal_Financev2.wsgi --log-file -
