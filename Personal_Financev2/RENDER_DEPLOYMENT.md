@@ -196,9 +196,7 @@ Your local database (`Personal_Finance_Tracker_DBv2`) only exists on YOUR comput
 
 After creation, find the **External Connection String** — it looks like this:
 
-```
-postgresql://finance_user:mW41pqeyC6Kg30EjhuJTv4Ev9lNiZEQ4@dpg-d8mf7qu7r5hc739njf8g-a.singapore-postgres.render.com/finance_db_qym0
-```
+
 
 This string contains everything Django needs to connect:
 ```
