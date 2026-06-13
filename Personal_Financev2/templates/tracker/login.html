@@ -6,28 +6,103 @@
   <title>JARVIS — Terminal Login</title>
   {% load static %}
   <link rel="stylesheet" href="{% static 'dist/css/main.css' %}">
+  <style>
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    @keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(100vh); } }
+    @keyframes float { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-20px) scale(1.02); } }
+    @keyframes grid-move { 0% { transform: translate(0, 0); } 100% { transform: translate(50px, 50px); } }
+    @keyframes pulse-glow { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.3; } }
+    .cursor-blink { animation: blink 1s step-end infinite; }
+    .scanline { pointer-events: none; position: fixed; inset: 0; background: linear-gradient(transparent 50%, rgba(34,211,238,0.015) 50%); background-size: 100% 4px; z-index: 9999; }
+    .bg-grid { position: fixed; inset: 0; z-index: 0; background-image: linear-gradient(rgba(34,211,238,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(34,211,238,0.03) 1px, transparent 1px); background-size: 60px 60px; animation: grid-move 8s linear infinite; }
+    .bg-orbs { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
+    .bg-orbs span { position: absolute; border-radius: 50%; filter: blur(80px); animation: float 6s ease-in-out infinite; }
+    .bg-orbs span:nth-child(1) { width: 400px; height: 400px; background: rgba(34,211,238,0.08); top: -10%; left: -10%; animation-delay: 0s; }
+    .bg-orbs span:nth-child(2) { width: 350px; height: 350px; background: rgba(52,211,153,0.06); bottom: -15%; right: -10%; animation-delay: -2s; }
+    .bg-orbs span:nth-child(3) { width: 250px; height: 250px; background: rgba(167,139,250,0.05); top: 50%; left: 50%; animation-delay: -4s; }
+    .form-error { border-color: rgba(251,113,133,0.5) !important; box-shadow: 0 0 8px rgba(251,113,133,0.15) !important; }
+    .typing-text::after { content: '|'; animation: blink 1s step-end infinite; color: #22d3ee; }
+    .shaking { animation: shake 0.4s ease-in-out; }
+    @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 50% { transform: translateX(4px); } 75% { transform: translateX(-2px); } }
+  </style>
 </head>
 <body class="min-h-screen flex items-center justify-center bg-slate-950">
-  <div class="glass-panel p-8 w-full max-w-md">
+  <div class="bg-grid"></div>
+  <div class="bg-orbs"><span></span><span></span><span></span></div>
+  <div class="scanline"></div>
+
+  <div class="glass-panel p-6 sm:p-8 w-full max-w-md mx-3 sm:mx-4 relative">
     <div class="text-center mb-8">
-      <h1 class="text-2xl font-mono neon-text-cyan mb-2">JARVIS CORE</h1>
+      <h1 class="text-2xl font-mono neon-text-cyan mb-2 typing-text">JARVIS CORE</h1>
       <p class="text-slate-500 text-sm">Personal Finance Terminal</p>
+      <div class="flex items-center justify-center gap-2 mt-3">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="text-[10px] text-slate-600 font-mono">System Ready</span>
+      </div>
     </div>
-    <form method="post" class="space-y-4">
+
+    <form method="post" class="space-y-4" id="login-form" x-data="{ loading: false, showPw: false }">
       {% csrf_token %}
       <div>
         <label class="block text-slate-400 text-xs uppercase tracking-wider mb-1">Username</label>
-        <input type="text" name="username" class="input-cyber" required>
+        <input type="text" name="username" id="id_username" class="input-cyber w-full" required autocomplete="username" autofocus>
+        <p class="text-[10px] text-rose-400/80 mt-1 hidden" id="username-error">Please enter your username</p>
       </div>
-      <div>
+      <div class="relative">
         <label class="block text-slate-400 text-xs uppercase tracking-wider mb-1">Password</label>
-        <input type="password" name="password" class="input-cyber" required>
+        <div class="relative">
+          <input :type="showPw ? 'text' : 'password'" name="password" id="id_password" class="input-cyber w-full pr-10" required autocomplete="current-password">
+          <button type="button" @click="showPw = !showPw" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-cyan-400 transition-colors p-1">
+            <svg x-show="!showPw" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="w-4 h-4"><path d="M10 4c-4 0-7 3-7 6s3 6 7 6 7-3 7-6-3-6-7-6z"/><circle cx="10" cy="10" r="2"/></svg>
+            <svg x-show="showPw" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="w-4 h-4"><path d="M3 3l14 14M7.5 7.5A3 3 0 0113 13M4 6.5A7 7 0 0016 13.5M16 6.5A7 7 0 004 13.5"/></svg>
+          </button>
+        </div>
       </div>
-      {% if form.errors %}
-        <p class="text-rose-400 text-xs">Invalid credentials. Please try again.</p>
-      {% endif %}
-      <button type="submit" class="btn-cyber w-full">Authenticate</button>
+
+      <div id="error-box" class="{% if form.errors %}block{% else %}hidden{% endif %} p-3 rounded-lg bg-rose-900/30 border border-rose-500/30 text-rose-300 text-xs font-mono shaking">
+        <div class="flex items-center gap-2">
+          <span>⛔</span>
+          <span>ACCESS DENIED — Invalid credentials</span>
+        </div>
+      </div>
+
+      <button type="submit" id="login-btn"
+              class="btn-cyber w-full flex items-center justify-center gap-2"
+              :disabled="loading">
+        <svg x-show="loading" class="animate-spin w-4 h-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+        <span x-text="loading ? 'Authenticating...' : 'Authenticate'"></span>
+      </button>
     </form>
+
+    <p class="text-center text-[10px] text-slate-700 mt-6 font-mono">
+      JARVIS v2.0 // <span class="text-slate-600">Encrypted Channel</span>
+    </p>
   </div>
+
+  <script src="{% static 'dist/js/main.js' %}"></script>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', function(e) {
+      const btn = document.getElementById('login-btn');
+      const username = document.getElementById('id_username');
+      const errEl = document.getElementById('username-error');
+      if (!username.value.trim()) {
+        e.preventDefault();
+        username.classList.add('form-error');
+        errEl.classList.remove('hidden');
+        username.focus();
+        return;
+      }
+      errEl.classList.add('hidden');
+      username.classList.remove('form-error');
+      btn.querySelector('span').textContent = 'Authenticating...';
+      btn.disabled = true;
+      btn.querySelector('svg').classList.remove('hidden');
+    });
+
+    document.getElementById('id_username').addEventListener('input', function() {
+      this.classList.remove('form-error');
+      document.getElementById('username-error').classList.add('hidden');
+    });
+  </script>
 </body>
 </html>
