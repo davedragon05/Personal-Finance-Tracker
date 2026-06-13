@@ -106,6 +106,8 @@ document.addEventListener('alpine:init', () => {
     },
 
     chartInstances: {},
+    upcomingBills: [],
+    yoyData: null,
 
     modalOpen: null,
 
@@ -233,9 +235,30 @@ document.addEventListener('alpine:init', () => {
     async loadDashboard() {
       this.stats = await apiFetch(`/api/dashboard/stats/?year=${this.year}&month=${this.month}`);
       this.loadCharts();
+      this.loadYoYCharts();
       this.loadSavingsGoals();
       this.loadBudgetTargets();
       this.loadDebtHistory();
+      this.loadUpcomingBills();
+    },
+
+    async loadUpcomingBills() {
+      this.upcomingBills = await apiFetch('/api/recurring/upcoming/');
+    },
+
+    async loadYoYCharts() {
+      this.yoyData = await apiFetch(`/api/dashboard/charts/yoy/?year=${this.year}`);
+      setTimeout(() => {
+        this.renderYoYIncomeChart();
+        this.renderYoYDebtChart();
+        this.renderYoYNetWorthChart();
+      }, 200);
+    },
+
+    downloadMonthlyReport() {
+      const y = this.year;
+      const m = this.month;
+      window.open(`/api/reports/monthly/?year=${y}&month=${m}`, '_blank');
     },
 
     txnPage: 1,
@@ -916,6 +939,157 @@ document.addEventListener('alpine:init', () => {
           responsive: true,
           plugins: {
             legend: { labels: { color: '#94a3b8', font: { family: 'JetBrains Mono, monospace' } } },
+          },
+          scales: {
+            x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },
+            y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },
+          },
+        },
+      });
+    },
+
+    renderYoYIncomeChart() {
+      const el = document.getElementById('chart-yoy-income');
+      if (!el || !this.yoyData) return;
+      if (this.chartInstances.yoyIncome) this.chartInstances.yoyIncome.destroy();
+      const d = this.yoyData;
+      this.chartInstances.yoyIncome = new Chart(el, {
+        type: 'bar',
+        data: {
+          labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+          datasets: [
+            {
+              label: d.this_year.label + ' Income',
+              data: d.this_year.income_vs_expenses.income,
+              backgroundColor: 'rgba(52, 211, 153, 0.6)',
+              borderColor: 'rgba(52, 211, 153, 1)',
+              borderWidth: 1,
+              borderRadius: 2,
+            },
+            {
+              label: d.this_year.label + ' Expenses',
+              data: d.this_year.income_vs_expenses.expenses,
+              backgroundColor: 'rgba(251, 113, 133, 0.6)',
+              borderColor: 'rgba(251, 113, 133, 1)',
+              borderWidth: 1,
+              borderRadius: 2,
+            },
+            {
+              label: d.last_year.label + ' Income',
+              data: d.last_year.income_vs_expenses.income,
+              backgroundColor: 'rgba(52, 211, 153, 0.2)',
+              borderColor: 'rgba(52, 211, 153, 0.6)',
+              borderWidth: 1,
+              borderRadius: 2,
+              borderDash: [4, 3],
+            },
+            {
+              label: d.last_year.label + ' Expenses',
+              data: d.last_year.income_vs_expenses.expenses,
+              backgroundColor: 'rgba(251, 113, 133, 0.2)',
+              borderColor: 'rgba(251, 113, 133, 0.6)',
+              borderWidth: 1,
+              borderRadius: 2,
+              borderDash: [4, 3],
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { labels: { color: '#94a3b8', font: { family: 'JetBrains Mono, monospace' }, boxWidth: 12, padding: 8 } },
+          },
+          scales: {
+            x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },
+            y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },
+          },
+        },
+      });
+    },
+
+    renderYoYDebtChart() {
+      const el = document.getElementById('chart-yoy-debt');
+      if (!el || !this.yoyData) return;
+      if (this.chartInstances.yoyDebt) this.chartInstances.yoyDebt.destroy();
+      const d = this.yoyData;
+      this.chartInstances.yoyDebt = new Chart(el, {
+        type: 'line',
+        data: {
+          labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+          datasets: [
+            {
+              label: d.this_year.label + ' Debt',
+              data: d.this_year.debt_track.debt,
+              borderColor: 'rgba(251, 113, 133, 1)',
+              backgroundColor: 'rgba(251, 113, 133, 0.1)',
+              fill: true,
+              tension: 0.4,
+              pointBackgroundColor: 'rgba(251, 113, 133, 0.8)',
+              pointRadius: 3,
+            },
+            {
+              label: d.last_year.label + ' Debt',
+              data: d.last_year.debt_track.debt,
+              borderColor: 'rgba(251, 113, 133, 0.4)',
+              backgroundColor: 'rgba(251, 113, 133, 0.02)',
+              fill: true,
+              tension: 0.4,
+              pointBackgroundColor: 'rgba(251, 113, 133, 0.3)',
+              pointRadius: 3,
+              borderDash: [4, 3],
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { labels: { color: '#94a3b8', font: { family: 'JetBrains Mono, monospace' }, boxWidth: 12, padding: 8 } },
+          },
+          scales: {
+            x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },
+            y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },
+          },
+        },
+      });
+    },
+
+    renderYoYNetWorthChart() {
+      const el = document.getElementById('chart-yoy-networth');
+      if (!el || !this.yoyData) return;
+      if (this.chartInstances.yoyNetWorth) this.chartInstances.yoyNetWorth.destroy();
+      const d = this.yoyData;
+      this.chartInstances.yoyNetWorth = new Chart(el, {
+        type: 'line',
+        data: {
+          labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+          datasets: [
+            {
+              label: d.this_year.label + ' Net Worth',
+              data: d.this_year.net_worth_over_time.net_worth,
+              borderColor: 'rgba(52, 211, 153, 1)',
+              backgroundColor: 'rgba(52, 211, 153, 0.1)',
+              fill: true,
+              tension: 0.4,
+              pointBackgroundColor: 'rgba(52, 211, 153, 0.8)',
+              pointRadius: 3,
+            },
+            {
+              label: d.last_year.label + ' Net Worth',
+              data: d.last_year.net_worth_over_time.net_worth,
+              borderColor: 'rgba(52, 211, 153, 0.4)',
+              backgroundColor: 'rgba(52, 211, 153, 0.02)',
+              fill: true,
+              tension: 0.4,
+              pointBackgroundColor: 'rgba(52, 211, 153, 0.3)',
+              pointRadius: 3,
+              borderDash: [4, 3],
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { labels: { color: '#94a3b8', font: { family: 'JetBrains Mono, monospace' }, boxWidth: 12, padding: 8 } },
           },
           scales: {
             x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },

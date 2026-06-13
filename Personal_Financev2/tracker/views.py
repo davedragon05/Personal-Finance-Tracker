@@ -1,6 +1,6 @@
 import csv
 import json
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 from functools import wraps
 
@@ -8,9 +8,16 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Sum, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
+from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods
+
+try:
+    from weasyprint import HTML
+    WEASYPRINT_AVAILABLE = True
+except ImportError:
+    WEASYPRINT_AVAILABLE = False
 
 
 def ajax_login_required(view_func):
@@ -956,6 +963,167 @@ def api_transactions_import_csv(request):
         return JsonResponse({'status': 'ok', 'created': created})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_upcoming_bills(request):
+    today = date.today()
+    end_date = today + timedelta(days=7)
+    qs = RecurringTransaction.objects.filter(
+        user=request.user, active=True,
+        next_due_date__lte=end_date
+    ).select_related('subcategory', 'subcategory__pillar').order_by('next_due_date')
+    data = []
+    for rt in qs:
+        due_in = (rt.next_due_date - today).days
+        data.append({
+            'id': rt.id,
+            'subcategory_name': rt.subcategory.name,
+            'pillar_name': rt.subcategory.pillar.name,
+            'amount': str(rt.amount),
+            'detail': rt.detail,
+            'next_due_date': str(rt.next_due_date),
+            'due_in_days': due_in,
+            'is_overdue': due_in < 0,
+        })
+    return JsonResponse(data, safe=False)
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_yoy_chart_data(request):
+    year = int(request.GET.get('year', datetime.now().year))
+    compare_year = year - 1
+
+    income_pillar = FinancialPillar.objects.get(name='INCOME')
+    expense_pillars = FinancialPillar.objects.filter(
+        name__in=['BILLS', 'SUBSCRIPTIONS', 'EXPENSES']
+    )
+    debt_pillar = FinancialPillar.objects.get(name='DEBT')
+    savings_pillar = FinancialPillar.objects.get(name='SAVINGS_INVESTMENTS')
+
+    months = list(range(1, 13))
+
+    def get_monthly_data(target_year):
+        income = []
+        expense = []
+        debt = []
+        net_worth_vals = []
+        cumulative = 0
+        for m in months:
+            inc = TransactionLog.objects.filter(
+                user=request.user, date__year=target_year, date__month=m,
+                category=income_pillar
+            ).aggregate(s=Sum('amount'))['s'] or 0
+            exp = TransactionLog.objects.filter(
+                user=request.user, date__year=target_year, date__month=m,
+                category__in=expense_pillars
+            ).aggregate(s=Sum('amount'))['s'] or 0
+            d = TransactionLog.objects.filter(
+                user=request.user, date__year=target_year, date__month=m,
+                category=debt_pillar
+            ).aggregate(s=Sum('amount'))['s'] or 0
+            sav = TransactionLog.objects.filter(
+                user=request.user, date__year=target_year, date__month=m,
+                category=savings_pillar
+            ).aggregate(s=Sum('amount'))['s'] or 0
+            income.append(float(inc))
+            expense.append(float(exp))
+            debt.append(float(d))
+            cumulative += float(inc) - float(exp)
+            net_worth_vals.append(round(cumulative - float(d) + float(sav), 2))
+        return {'income': income, 'expense': expense, 'debt': debt, 'net_worth': net_worth_vals}
+
+    this_year = get_monthly_data(year)
+    last_year = get_monthly_data(compare_year)
+
+    return JsonResponse({
+        'this_year': {
+            'label': str(year),
+            'income_vs_expenses': {'labels': months, 'income': this_year['income'], 'expenses': this_year['expense']},
+            'debt_track': {'labels': months, 'debt': this_year['debt']},
+            'net_worth_over_time': {'labels': months, 'net_worth': this_year['net_worth']},
+        },
+        'last_year': {
+            'label': str(compare_year),
+            'income_vs_expenses': {'labels': months, 'income': last_year['income'], 'expenses': last_year['expense']},
+            'debt_track': {'labels': months, 'debt': last_year['debt']},
+            'net_worth_over_time': {'labels': months, 'net_worth': last_year['net_worth']},
+        },
+    })
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_monthly_report_pdf(request):
+    year = int(request.GET.get('year', datetime.now().year))
+    month = int(request.GET.get('month', datetime.now().month))
+
+    income_pillar = FinancialPillar.objects.get(name='INCOME')
+    expense_pillars = FinancialPillar.objects.filter(
+        name__in=['BILLS', 'SUBSCRIPTIONS', 'EXPENSES']
+    )
+    debt_pillar = FinancialPillar.objects.get(name='DEBT')
+    savings_pillar = FinancialPillar.objects.get(name='SAVINGS_INVESTMENTS')
+
+    total_income = TransactionLog.objects.filter(
+        user=request.user, date__year=year, date__month=month,
+        category=income_pillar
+    ).aggregate(s=Sum('amount'))['s'] or 0
+
+    total_expenses = TransactionLog.objects.filter(
+        user=request.user, date__year=year, date__month=month,
+        category__in=expense_pillars
+    ).aggregate(s=Sum('amount'))['s'] or 0
+
+    total_debt = TransactionLog.objects.filter(
+        user=request.user, date__year=year, date__month=month,
+        category=debt_pillar
+    ).aggregate(s=Sum('amount'))['s'] or 0
+
+    total_savings = TransactionLog.objects.filter(
+        user=request.user, date__year=year, date__month=month,
+        category=savings_pillar, amount__gt=0
+    ).aggregate(s=Sum('amount'))['s'] or 0
+
+    transactions = TransactionLog.objects.filter(
+        user=request.user, date__year=year, date__month=month
+    ).select_related('category', 'subcategory').order_by('date')
+
+    transactions_by_category = {}
+    for txn in transactions:
+        cat = txn.category.name if txn.category else 'Uncategorized'
+        if cat not in transactions_by_category:
+            transactions_by_category[cat] = []
+        transactions_by_category[cat].append({
+            'date': txn.date,
+            'detail': txn.detail,
+            'amount': str(txn.amount),
+            'subcategory': txn.subcategory.name if txn.subcategory else '',
+        })
+
+    month_name = datetime(year, month, 1).strftime('%B %Y')
+    net = float(total_income) + float(total_savings) - float(total_expenses) - float(total_debt)
+
+    html = render_to_string('tracker/report_monthly.html', {
+        'month_name': month_name,
+        'total_income': str(total_income),
+        'total_expenses': str(total_expenses),
+        'total_debt': str(total_debt),
+        'total_savings': str(total_savings),
+        'net': str(net),
+        'transactions_by_category': transactions_by_category,
+        'user': request.user,
+    })
+
+    if WEASYPRINT_AVAILABLE:
+        pdf = HTML(string=html).write_pdf()
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="report_{year}_{month:02d}.pdf"'
+        return response
+    else:
+        return HttpResponse(html, content_type='text/html')
 
 
 @ajax_login_required

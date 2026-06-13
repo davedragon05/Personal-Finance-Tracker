@@ -33,4 +33,7 @@ urlpatterns = [
     path('api/audit-log/', views.api_audit_log, name='api-audit-log'),
     path('api/backup/export/', views.api_backup_export, name='api-backup-export'),
     path('api/backup/import/', views.api_backup_import, name='api-backup-import'),
+    path('api/recurring/upcoming/', views.api_upcoming_bills, name='api-upcoming-bills'),
+    path('api/dashboard/charts/yoy/', views.api_yoy_chart_data, name='api-yoy-chart-data'),
+    path('api/reports/monthly/', views.api_monthly_report_pdf, name='api-monthly-report'),
 ]

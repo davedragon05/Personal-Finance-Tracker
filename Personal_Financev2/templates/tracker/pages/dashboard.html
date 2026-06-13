@@ -25,6 +25,34 @@
     </div>
   </div>
 
+  <div class="glass-panel p-5" x-show="upcomingBills.length > 0">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-mono text-slate-400">⏰ Upcoming Bills (Next 7 Days)</h3>
+      <button @click="downloadMonthlyReport()"
+              class="text-[10px] px-3 py-1 rounded bg-slate-700/50 text-slate-300 hover:bg-slate-600/50 border border-slate-600/50 transition-colors">
+        📄 Download PDF Report
+      </button>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <template x-for="bill in upcomingBills" :key="bill.id">
+        <div class="bg-slate-800/40 rounded-lg p-3 border border-slate-700/50"
+             :class="bill.is_overdue ? 'border-rose-500/30' : ''">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-mono text-slate-300" x-text="bill.subcategory_name"></span>
+            <span class="text-[10px] px-2 py-0.5 rounded font-mono"
+                  :class="bill.is_overdue
+                    ? 'bg-rose-900/50 text-rose-300 border border-rose-500/30'
+                    : 'bg-amber-900/50 text-amber-300 border border-amber-500/30'"
+                  x-text="bill.is_overdue ? 'OVERDUE' : bill.due_in_days + ' day(s)'"></span>
+          </div>
+          <p class="text-lg font-bold neon-text-rose" x-text="'₱' + numberWithCommas(bill.amount)"></p>
+          <p class="text-[10px] text-slate-500 truncate" x-text="bill.detail || bill.pillar_name"></p>
+          <p class="text-[10px] text-slate-600" x-text="'Due: ' + formatShortDate(bill.next_due_date)"></p>
+        </div>
+      </template>
+    </div>
+  </div>
+
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <div class="glass-panel p-5">
       <h3 class="text-sm font-mono text-slate-400 mb-4">📊 Income vs. Expenses</h3>
@@ -44,6 +72,27 @@
     <div class="glass-panel p-5">
       <h3 class="text-sm font-mono text-slate-400 mb-4">📊 Net Worth Over Time</h3>
       <canvas id="chart-net-worth" height="200"></canvas>
+    </div>
+  </div>
+
+  <div class="glass-panel p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-sm font-mono text-slate-400">📈 Year-over-Year Comparison</h3>
+      <span class="text-[10px] text-slate-600">{{ year }} vs {{ year|add:"-1" }}</span>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div>
+        <h4 class="text-xs font-mono text-slate-500 mb-3">Income vs Expenses (Bar)</h4>
+        <canvas id="chart-yoy-income" height="220"></canvas>
+      </div>
+      <div>
+        <h4 class="text-xs font-mono text-slate-500 mb-3">Debt Track (Line)</h4>
+        <canvas id="chart-yoy-debt" height="220"></canvas>
+      </div>
+    </div>
+    <div class="mt-6">
+      <h4 class="text-xs font-mono text-slate-500 mb-3">Net Worth Over Time (Line)</h4>
+      <canvas id="chart-yoy-networth" height="200"></canvas>
     </div>
   </div>
 
