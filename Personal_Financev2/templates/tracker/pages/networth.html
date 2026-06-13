@@ -1,0 +1,36 @@
+<div class="space-y-6">
+  <h2 class="text-lg font-mono neon-text-emerald">📈 NET WORTH TRAJECTORY</h2>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Current Net Worth</p>
+      <p class="text-2xl font-bold neon-text-emerald" x-text="formatCurrency(stats.net_worth)"></p>
+    </div>
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Total Income (All Time)</p>
+      <p class="text-2xl font-bold neon-text-emerald" x-text="formatCurrency(stats.total_income)"></p>
+    </div>
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Total Debt</p>
+      <p class="text-2xl font-bold neon-text-rose" x-text="formatCurrency(stats.total_debt)"></p>
+    </div>
+  </div>
+
+  <div class="glass-panel p-5">
+    <h3 class="text-sm font-mono text-slate-400 mb-4">12-Month Net Worth Trajectory</h3>
+    <canvas id="chart-net-worth-trajectory" height="280"></canvas>
+  </div>
+
+  <div class="glass-panel p-5">
+    <h3 class="text-sm font-mono text-slate-400 mb-4">Account Balances</h3>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <template x-for="a in accounts" :key="a.id">
+        <div class="bg-slate-800/40 rounded-lg p-3 border border-slate-700/50">
+          <p class="text-[10px] text-slate-500 uppercase" x-text="a.name"></p>
+          <p class="text-sm font-mono mt-1" :class="parseFloat(a.balance) >= 0 ? 'neon-text-emerald' : 'neon-text-rose'"
+             x-text="'₱' + numberWithCommas(a.balance)"></p>
+        </div>
+      </template>
+    </div>
+  </div>
+</div>

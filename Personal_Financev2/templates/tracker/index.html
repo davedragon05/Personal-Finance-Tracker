@@ -48,6 +48,18 @@
         <div x-show="activePage === 'calendar'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0">
           {% include 'tracker/pages/calendar.html' %}
         </div>
+        <div x-show="activePage === 'reports'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0">
+          {% include 'tracker/pages/reports.html' %}
+        </div>
+        <div x-show="activePage === 'insights'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0">
+          {% include 'tracker/pages/insights.html' %}
+        </div>
+        <div x-show="activePage === 'networth'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0">
+          {% include 'tracker/pages/networth.html' %}
+        </div>
+        <div x-show="activePage === 'notifications'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0">
+          {% include 'tracker/pages/notifications.html' %}
+        </div>
         <div x-show="activePage === 'settings'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0">
           {% include 'tracker/pages/settings.html' %}
         </div>

@@ -177,7 +177,13 @@
       <span class="w-1 h-5 bg-purple-400 rounded-full shadow-[0_0_6px_rgba(167,139,250,0.5)]"></span>
       <h3 class="text-sm font-mono text-purple-400">Account Security</h3>
     </div>
-    <a href="/password-change/" class="btn-cyber text-xs inline-flex items-center gap-2"><span class="text-cyan-400">🔑</span> Change Password</a>
+    <div class="flex flex-wrap gap-3 items-center">
+      <a href="/password-change/" class="btn-cyber text-xs inline-flex items-center gap-2"><span class="text-cyan-400">🔑</span> Change Password</a>
+      <button @click="toggleTheme()" class="btn-cyber text-xs inline-flex items-center gap-2">
+        <span x-text="darkMode ? '☀️' : '🌙'"></span>
+        <span x-text="darkMode ? 'Light Mode' : 'Dark Mode'"></span>
+      </button>
+    </div>
   </div>
 
   <div class="glass-panel p-5" id="sec-backup">

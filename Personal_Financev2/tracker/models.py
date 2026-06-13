@@ -58,6 +58,7 @@ class TransactionLog(models.Model):
     account = models.ForeignKey('Account', on_delete=models.SET_NULL, null=True, blank=True)
     payment_mode = models.CharField(max_length=30, blank=True, default='')
     debt_history_id = models.IntegerField(null=True, blank=True)
+    receipt = models.ImageField(upload_to='receipts/%Y/%m/', null=True, blank=True)
     is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

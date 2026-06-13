@@ -83,6 +83,10 @@ document.addEventListener('alpine:init', () => {
       debt: 'Debt Tracker',
       savings: 'Savings Matrix',
       calendar: 'No-Spend Radar',
+      reports: 'Reports',
+      insights: 'Insights',
+      networth: 'Net Worth',
+      notifications: 'Notifications',
       settings: 'System Settings',
     },
 
@@ -106,8 +110,20 @@ document.addEventListener('alpine:init', () => {
     },
 
     chartInstances: {},
+    receiptPreview: null,
     upcomingBills: [],
     yoyData: null,
+    insights: null,
+    notifications: [],
+    netWorthTrajectory: [],
+    spendingByDay: [],
+    fullPieData: null,
+    reportYear: new Date().getFullYear(),
+    reportMonth: new Date().getMonth() + 1,
+    reportData: null,
+    selectedTxnIds: [],
+    searchQuery: '',
+    darkMode: true,
 
     modalOpen: null,
 
@@ -136,6 +152,7 @@ document.addEventListener('alpine:init', () => {
       year: new Date().getFullYear(),
       month: new Date().getMonth() + 1,
       category_id: '',
+      account_id: '',
     },
 
     matrixFilter: {
@@ -172,6 +189,11 @@ document.addEventListener('alpine:init', () => {
 
     init() {
       this.showScrollBtn = false;
+      this.darkMode = localStorage.getItem('jarvis_theme') !== 'light';
+      if (!this.darkMode) {
+        document.documentElement.classList.remove('dark');
+        document.documentElement.classList.add('light');
+      }
       const scrollEl = document.querySelector('main');
       if (scrollEl) {
         scrollEl.addEventListener('scroll', () => {
@@ -195,10 +217,22 @@ document.addEventListener('alpine:init', () => {
       window.addEventListener('api-start', () => this.loading++);
       window.addEventListener('api-end', () => this.loading--);
       document.addEventListener('keydown', e => {
-        if ((e.ctrlKey || e.metaKey) && e.key >= '1' && e.key <= '7') {
+        if ((e.ctrlKey || e.metaKey) && e.key >= '1' && e.key <= '9') {
           e.preventDefault();
-          const pages = ['dashboard', 'ledger', 'matrix', 'debt', 'savings', 'calendar', 'settings'];
+          const pages = ['dashboard', 'ledger', 'matrix', 'debt', 'savings', 'calendar', 'reports', 'insights', 'networth'];
           this.navigate(pages[parseInt(e.key) - 1]);
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+          e.preventDefault();
+          this.navigate('notifications');
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'n' && this.activePage === 'ledger') {
+          e.preventDefault();
+          this.openModal('txn-modal');
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+          e.preventDefault();
+          document.querySelector('[x-ref="searchInput"]')?.focus();
         }
       });
     },
@@ -246,6 +280,118 @@ document.addEventListener('alpine:init', () => {
       this.upcomingBills = await apiFetch('/api/recurring/upcoming/');
     },
 
+    async uploadReceipt(txnId, event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('receipt', file);
+      try {
+        const resp = await fetch(`/api/transactions/${txnId}/upload-receipt/`, {
+          method: 'POST',
+          body: formData,
+          headers: { 'X-CSRFToken': getCSRFToken() },
+        });
+        const result = await resp.json();
+        if (result.status === 'ok') {
+          const txn = this.transactions.find(t => t.id === txnId);
+          if (txn) txn.receipt_url = result.receipt_url;
+          this.showToast('Receipt uploaded', 'success');
+        } else {
+          this.showToast(result.message || 'Upload failed', 'error');
+        }
+      } catch (e) {
+        this.showToast('Upload failed: ' + e.message, 'error');
+      }
+      event.target.value = '';
+    },
+
+    async deleteReceipt(txnId) {
+      if (!confirm('Remove this receipt?')) return;
+      const result = await apiFetch(`/api/transactions/${txnId}/delete-receipt/`, { method: 'POST' });
+      if (result.status === 'ok') {
+        const txn = this.transactions.find(t => t.id === txnId);
+        if (txn) txn.receipt_url = null;
+        this.showToast('Receipt removed', 'success');
+      }
+    },
+
+    async loadInsights() {
+      this.insights = await apiFetch(`/api/analytics/insights/?year=${this.year}`);
+      this.spendingByDay = await apiFetch(`/api/analytics/spending-by-day/?year=${this.year}`);
+      this.fullPieData = await apiFetch(`/api/analytics/full-pie-chart/?year=${this.year}`);
+      setTimeout(() => {
+        this.renderDayOfWeekChart();
+        this.renderFullPieChart();
+      }, 200);
+    },
+
+    async loadNetWorthTrajectory() {
+      this.netWorthTrajectory = await apiFetch('/api/analytics/net-worth-trajectory/');
+      setTimeout(() => this.renderNetWorthTrajectoryChart(), 200);
+    },
+
+    async loadReportData() {
+      const data = await apiFetch(`/api/dashboard/stats/?year=${this.reportYear}&month=${this.reportMonth}`);
+      this.reportData = data;
+    },
+
+    async loadNotifications() {
+      this.notifications = await apiFetch('/api/analytics/notifications/');
+    },
+
+    toggleTheme() {
+      this.darkMode = !this.darkMode;
+      const html = document.documentElement;
+      if (this.darkMode) {
+        html.classList.remove('light');
+        html.classList.add('dark');
+        localStorage.setItem('jarvis_theme', 'dark');
+      } else {
+        html.classList.remove('dark');
+        html.classList.add('light');
+        localStorage.setItem('jarvis_theme', 'light');
+      }
+    },
+
+    toggleSelectTxn(id) {
+      const idx = this.selectedTxnIds.indexOf(id);
+      if (idx > -1) this.selectedTxnIds.splice(idx, 1);
+      else this.selectedTxnIds.push(id);
+    },
+
+    toggleSelectAll() {
+      if (this.selectedTxnIds.length === this.filteredTransactions.length) {
+        this.selectedTxnIds = [];
+      } else {
+        this.selectedTxnIds = this.filteredTransactions.map(t => t.id);
+      }
+    },
+
+    async bulkDelete() {
+      if (!this.selectedTxnIds.length || !confirm(`Delete ${this.selectedTxnIds.length} transaction(s)?`)) return;
+      await apiFetch('/api/transactions/bulk-delete/', {
+        method: 'POST',
+        body: JSON.stringify({ ids: this.selectedTxnIds }),
+      });
+      this.selectedTxnIds = [];
+      window.dispatchEvent(new CustomEvent('jarvis-sync'));
+      this.showToast('Transactions deleted', 'success');
+    },
+
+    get filteredTransactions() {
+      if (!this.searchQuery) return this.transactions;
+      const q = this.searchQuery.toLowerCase();
+      return this.transactions.filter(t =>
+        (t.detail && t.detail.toLowerCase().includes(q)) ||
+        (t.subcategory_name && t.subcategory_name.toLowerCase().includes(q)) ||
+        (t.category && t.category.toLowerCase().includes(q))
+      );
+    },
+
+    get accountOptions() {
+      return [{ id: '', name: 'All Accounts' }, ...this.accounts.map(a => ({ id: a.id, name: a.name }))];
+    },
+
     async loadYoYCharts() {
       this.yoyData = await apiFetch(`/api/dashboard/charts/yoy/?year=${this.year}`);
       setTimeout(() => {
@@ -268,7 +414,8 @@ document.addEventListener('alpine:init', () => {
     async loadTransactions() {
       const y = this.filter?.year || this.year;
       const m = this.filter?.month || this.month;
-      const resp = await apiFetch(`/api/transactions/?year=${y}&month=${m}&page=${this.txnPage}&page_size=${this.txnPageSize}`);
+      const a = this.filter?.account_id || '';
+      const resp = await apiFetch(`/api/transactions/?year=${y}&month=${m}&account_id=${a}&page=${this.txnPage}&page_size=${this.txnPageSize}`);
       if (Array.isArray(resp)) {
         this.transactions = resp;
         this.txnTotal = resp.length;
@@ -796,6 +943,10 @@ document.addEventListener('alpine:init', () => {
       if (page === 'matrix') { this.loadBudgetTargets(); this.loadSubcategories(); }
       if (page === 'savings') { this.loadSavingsGoals(); this.loadSubcategories(); }
       if (page === 'debt') { this.loadDebtHistory(); this.loadSubcategories(); }
+      if (page === 'reports') { this.loadReportData(); }
+      if (page === 'insights') { this.loadInsights(); }
+      if (page === 'networth') { this.loadDashboard(); this.loadAccounts(); this.loadNetWorthTrajectory(); }
+      if (page === 'notifications') { this.loadNotifications(); this.loadUpcomingBills(); }
       if (page === 'settings') { this.loadSubcategories(); this.loadRecurring(); this.loadAccounts(); this.loadAuditLog(); }
     },
     navigate(page) {
@@ -1091,6 +1242,92 @@ document.addEventListener('alpine:init', () => {
           plugins: {
             legend: { labels: { color: '#94a3b8', font: { family: 'JetBrains Mono, monospace' }, boxWidth: 12, padding: 8 } },
           },
+          scales: {
+            x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },
+            y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },
+          },
+        },
+      });
+    },
+
+    renderDayOfWeekChart() {
+      const el = document.getElementById('chart-day-of-week');
+      if (!el) return;
+      if (this.chartInstances.dayOfWeek) this.chartInstances.dayOfWeek.destroy();
+      const colors = ['#fb7185', '#fbbf24', '#a78bfa', '#34d399', '#f472b6', '#60a5fa', '#f97316'];
+      this.chartInstances.dayOfWeek = new Chart(el, {
+        type: 'bar',
+        data: {
+          labels: this.spendingByDay.map(d => d.day),
+          datasets: [{
+            label: 'Total Spent',
+            data: this.spendingByDay.map(d => d.total),
+            backgroundColor: colors.slice(0, this.spendingByDay.length),
+            borderColor: colors.slice(0, this.spendingByDay.length).map(c => c.replace('0.', '1.')),
+            borderWidth: 1,
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },
+            y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },
+          },
+        },
+      });
+    },
+
+    renderFullPieChart() {
+      const el = document.getElementById('chart-full-pie');
+      if (!el || !this.fullPieData) return;
+      if (this.chartInstances.fullPie) this.chartInstances.fullPie.destroy();
+      const colors = ['#34d399', '#fb7185', '#fbbf24', '#a78bfa', '#60a5fa', '#f472b6', '#f97316'];
+      this.chartInstances.fullPie = new Chart(el, {
+        type: 'doughnut',
+        data: {
+          labels: this.fullPieData.labels,
+          datasets: [{
+            data: this.fullPieData.values,
+            backgroundColor: colors.slice(0, this.fullPieData.labels.length),
+            borderColor: '#0f172a',
+            borderWidth: 2,
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { color: '#94a3b8', font: { family: 'JetBrains Mono, monospace' }, padding: 12 },
+            },
+          },
+        },
+      });
+    },
+
+    renderNetWorthTrajectoryChart() {
+      const el = document.getElementById('chart-net-worth-trajectory');
+      if (!el) return;
+      if (this.chartInstances.netWorthTrajectory) this.chartInstances.netWorthTrajectory.destroy();
+      this.chartInstances.netWorthTrajectory = new Chart(el, {
+        type: 'line',
+        data: {
+          labels: this.netWorthTrajectory.map(d => d.month),
+          datasets: [{
+            label: 'Net Worth',
+            data: this.netWorthTrajectory.map(d => d.net_worth),
+            borderColor: 'rgba(52, 211, 153, 1)',
+            backgroundColor: 'rgba(52, 211, 153, 0.1)',
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: 'rgba(52, 211, 153, 0.8)',
+            pointRadius: 4,
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { labels: { color: '#94a3b8', font: { family: 'JetBrains Mono, monospace' } } } },
           scales: {
             x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },
             y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(100, 116, 139, 0.1)' } },

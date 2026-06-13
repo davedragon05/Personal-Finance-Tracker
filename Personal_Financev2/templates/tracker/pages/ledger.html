@@ -7,7 +7,7 @@
   </div>
 
   <div class="glass-panel p-5">
-    <div class="flex gap-3 mb-4 flex-wrap">
+    <div class="flex gap-3 mb-4 flex-wrap items-center">
       <select x-model="filter.year" @change="txnPage = 1; loadTransactions()" class="input-cyber w-20 sm:w-28 text-xs py-1.5">
         <template x-for="y in [2024,2025,2026,2027,2028]">
           <option :value="y" x-text="y"></option>
@@ -18,12 +18,31 @@
           <option :value="idx+1" x-text="mName"></option>
         </template>
       </select>
+      <div class="relative flex-1 min-w-[150px] max-w-xs">
+        <input x-ref="searchInput" type="text" x-model="searchQuery" placeholder="🔍 Search transactions..."
+               class="input-cyber text-xs py-1.5 pl-8 w-full">
+        <svg x-show="searchQuery" @click="searchQuery = ''" class="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 cursor-pointer hover:text-slate-300" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd"/></svg>
+      </div>
+      <select x-model="filter.account_id" @change="txnPage = 1; loadTransactions()" class="input-cyber text-xs py-1.5 w-auto">
+        <option value="">All Accounts</option>
+        <template x-for="a in accounts" :key="a.id">
+          <option :value="a.id" x-text="a.name"></option>
+        </template>
+      </select>
       <a :href="'/api/transactions/export/csv/?year=' + filter.year + '&month=' + filter.month"
          class="btn-cyber text-xs py-1.5">⬇ CSV</a>
+      <a :href="'/api/transactions/export/xlsx/?year=' + filter.year + '&month=' + filter.month"
+         class="btn-cyber text-xs py-1.5" target="_blank">⬇ XLSX</a>
       <label class="btn-cyber text-xs py-1.5 cursor-pointer">
-        ⬆ Import CSV
+        ⬆ Import
         <input type="file" accept=".csv" class="hidden" @change="importCSV($event)">
       </label>
+    </div>
+
+    <div class="flex items-center gap-3 mb-3" x-show="selectedTxnIds.length > 0">
+      <span class="text-xs text-slate-500" x-text="selectedTxnIds.length + ' selected'"></span>
+      <button @click="bulkDelete()" class="text-xs px-3 py-1 rounded bg-rose-900/50 text-rose-300 border border-rose-500/30 hover:bg-rose-800/50 transition-colors">🗑 Delete Selected</button>
+      <button @click="selectedTxnIds = []" class="text-xs px-3 py-1 rounded bg-slate-800/50 text-slate-400 hover:text-slate-300 transition-colors">Cancel</button>
     </div>
 
     <div class="flex items-center justify-between mb-3" x-show="txnTotal > txnPageSize">
@@ -42,8 +61,10 @@
       <table class="table-cyber w-full">
         <thead>
           <tr>
+            <th class="w-8"><input type="checkbox" @change="toggleSelectAll()" :checked="selectedTxnIds.length === filteredTransactions.length && filteredTransactions.length > 0" class="rounded border-slate-600 bg-slate-800 text-cyan-500 focus:ring-cyan-500"></th>
             <th>Date</th>
             <th>Detail</th>
+            <th class="w-12">Receipt</th>
             <th>Category</th>
             <th>Subcategory</th>
             <th>Account</th>
@@ -55,10 +76,31 @@
           </tr>
         </thead>
         <tbody>
-          <template x-for="txn in transactions" :key="txn.id">
-            <tr class="hover:bg-slate-800/40 hover:border-l-2 hover:border-cyan-400 transition-all duration-200">
+          <template x-for="txn in filteredTransactions" :key="txn.id">
+            <tr class="hover:bg-slate-800/40 hover:border-l-2 hover:border-cyan-400 transition-all duration-200"
+                :class="selectedTxnIds.includes(txn.id) ? 'bg-cyan-900/20 border-l-2 border-cyan-400' : ''">
+              <td><input type="checkbox" :checked="selectedTxnIds.includes(txn.id)" @change="toggleSelectTxn(txn.id)" class="rounded border-slate-600 bg-slate-800 text-cyan-500 focus:ring-cyan-500"></td>
               <td class="text-slate-400" x-text="txn.date"></td>
               <td x-text="txn.detail"></td>
+              <td class="text-center">
+                <template x-if="txn.receipt_url">
+                  <div class="relative group inline-block">
+                    <img :src="txn.receipt_url" alt="receipt"
+                         class="w-8 h-8 object-cover rounded cursor-pointer border border-slate-600/50 hover:border-cyan-400/50 transition-all"
+                         @click="receiptPreview = txn.receipt_url">
+                    <button @click.stop="deleteReceipt(txn.id)"
+                            class="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-900/80 text-rose-300 text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-700">
+                      ✕
+                    </button>
+                  </div>
+                </template>
+                <template x-if="!txn.receipt_url">
+                  <label class="cursor-pointer text-slate-600 hover:text-cyan-400 transition-colors p-1 block">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="w-4 h-4 mx-auto"><path d="M4 15l4-4 2 2 5-5 3 3"/><path d="M2 4h16v12H2z"/><path d="M7 8a1 1 0 100-2 1 1 0 000 2z"/></svg>
+                    <input type="file" accept="image/*" class="hidden" @change="uploadReceipt(txn.id, $event)">
+                  </label>
+                </template>
+              </td>
               <td>
                 <span class="pillar-badge text-[10px]"
                       :class="txn.category"
@@ -97,7 +139,7 @@
             </tr>
           </template>
           <tr x-show="transactions.length === 0">
-            <td colspan="10" class="text-center text-slate-600 py-8">No transactions recorded</td>
+            <td colspan="11" class="text-center text-slate-600 py-8">No transactions recorded</td>
           </tr>
         </tbody>
       </table>
@@ -250,6 +292,17 @@
           </div>
         </form>
       </div>
+    </div>
+  </div>
+
+  <div x-show="receiptPreview" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+       @click="receiptPreview = null">
+    <div class="relative max-w-3xl max-h-[90vh] mx-4">
+      <img :src="receiptPreview" class="max-w-full max-h-[85vh] rounded-lg shadow-2xl border border-slate-700/50">
+      <button @click="receiptPreview = null"
+              class="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-slate-800 border border-slate-600 text-slate-400 hover:text-white flex items-center justify-center text-sm transition-colors">
+        ✕
+      </button>
     </div>
   </div>
 </div>

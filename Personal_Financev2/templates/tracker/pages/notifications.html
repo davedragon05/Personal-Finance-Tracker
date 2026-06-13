@@ -1,0 +1,54 @@
+<div class="space-y-6">
+  <h2 class="text-lg font-mono neon-text-amber">🔔 NOTIFICATION CENTER</h2>
+
+  <div class="glass-panel p-5">
+    <div class="space-y-3" x-show="notifications.length > 0">
+      <template x-for="(n, i) in notifications" :key="i">
+        <div class="flex items-start gap-3 p-3 rounded-lg border"
+             :class="n.severity === 'danger' ? 'bg-rose-900/20 border-rose-500/30' :
+                     n.severity === 'warning' ? 'bg-amber-900/20 border-amber-500/30' :
+                     'bg-blue-900/20 border-blue-500/30'">
+          <span class="text-lg mt-0.5"
+                :class="n.severity === 'danger' ? 'text-rose-400' :
+                        n.severity === 'warning' ? 'text-amber-400' :
+                        'text-blue-400'">
+            <template x-if="n.type === 'bill_reminder'">⏰</template>
+            <template x-if="n.type === 'budget_alert'">⚠️</template>
+            <template x-if="n.type === 'inactivity'">💤</template>
+            <template x-if="!['bill_reminder','budget_alert','inactivity'].includes(n.type)">📌</template>
+          </span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-slate-200" x-text="n.message"></p>
+            <p class="text-[10px] text-slate-500 mt-0.5" x-text="n.date"></p>
+          </div>
+          <span class="text-[9px] px-2 py-0.5 rounded font-mono uppercase"
+                :class="n.severity === 'danger' ? 'bg-rose-900/50 text-rose-300' :
+                        n.severity === 'warning' ? 'bg-amber-900/50 text-amber-300' :
+                        'bg-blue-900/50 text-blue-300'"
+                x-text="n.severity"></span>
+        </div>
+      </template>
+    </div>
+    <p class="text-slate-600 text-sm" x-show="notifications.length === 0">No notifications at this time.</p>
+  </div>
+
+  <div class="glass-panel p-5">
+    <h3 class="text-sm font-mono text-slate-400 mb-4">⏰ Upcoming Bills</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" x-show="upcomingBills.length > 0">
+      <template x-for="bill in upcomingBills" :key="bill.id">
+        <div class="bg-slate-800/40 rounded-lg p-3 border border-slate-700/50"
+             :class="bill.is_overdue ? 'border-rose-500/30' : ''">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-mono text-slate-300" x-text="bill.subcategory_name"></span>
+            <span class="text-[10px] px-2 py-0.5 rounded font-mono"
+                  :class="bill.is_overdue ? 'bg-rose-900/50 text-rose-300' : 'bg-amber-900/50 text-amber-300'"
+                  x-text="bill.is_overdue ? 'OVERDUE' : bill.due_in_days + ' day(s)'"></span>
+          </div>
+          <p class="text-lg font-bold neon-text-rose" x-text="'₱' + numberWithCommas(bill.amount)"></p>
+          <p class="text-[10px] text-slate-500 truncate" x-text="bill.detail || bill.pillar_name"></p>
+          <p class="text-[10px] text-slate-600" x-text="'Due: ' + formatShortDate(bill.next_due_date)"></p>
+        </div>
+      </template>
+    </div>
+  </div>
+</div>

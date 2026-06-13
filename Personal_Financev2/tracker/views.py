@@ -1,5 +1,6 @@
 import csv
 import json
+import os
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from functools import wraps
@@ -131,6 +132,7 @@ def api_transactions(request):
     month = request.GET.get('month')
     subcategory_id = request.GET.get('subcategory_id')
     debt_history_id = request.GET.get('debt_history_id')
+    account_id = request.GET.get('account_id')
     if year:
         qs = qs.filter(date__year=int(year))
     if month:
@@ -139,6 +141,8 @@ def api_transactions(request):
         qs = qs.filter(subcategory_id=int(subcategory_id))
     if debt_history_id:
         qs = qs.filter(debt_history_id=int(debt_history_id))
+    if account_id:
+        qs = qs.filter(account_id=int(account_id))
     qs = qs.order_by('-date', '-created_at')
 
     page = int(request.GET.get('page', 1))
@@ -172,6 +176,7 @@ def api_transactions(request):
             'payment_mode': t.payment_mode,
             'debt_history_id': t.debt_history_id,
             'debt_outstanding_balance': str(debt_info.outstanding_balance) if debt_info else None,
+            'receipt_url': t.receipt.url if t.receipt else None,
         })
     if page_size > 0:
         return JsonResponse({'results': data, 'count': total, 'page': page, 'page_size': page_size})
@@ -1124,6 +1129,320 @@ def api_monthly_report_pdf(request):
         return response
     else:
         return HttpResponse(html, content_type='text/html')
+
+
+@ajax_login_required
+@require_http_methods(['POST'])
+def api_upload_receipt(request, txn_id):
+    try:
+        txn = TransactionLog.objects.get(id=txn_id, user=request.user)
+        if 'receipt' not in request.FILES:
+            return JsonResponse({'status': 'error', 'message': 'No file provided'}, status=400)
+        file = request.FILES['receipt']
+        if file.size > 10 * 1024 * 1024:
+            return JsonResponse({'status': 'error', 'message': 'File too large (max 10MB)'}, status=400)
+        if txn.receipt:
+            try:
+                os.remove(txn.receipt.path)
+            except (OSError, ValueError):
+                pass
+        txn.receipt = file
+        txn.save()
+        return JsonResponse({'status': 'ok', 'receipt_url': txn.receipt.url})
+    except TransactionLog.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@ajax_login_required
+@require_http_methods(['POST'])
+def api_delete_receipt(request, txn_id):
+    try:
+        txn = TransactionLog.objects.get(id=txn_id, user=request.user)
+        if txn.receipt:
+            try:
+                os.remove(txn.receipt.path)
+            except (OSError, ValueError):
+                pass
+            txn.receipt = None
+            txn.save()
+        return JsonResponse({'status': 'ok'})
+    except TransactionLog.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@ajax_login_required
+@require_http_methods(['POST'])
+def api_transactions_bulk_delete(request):
+    try:
+        body = json.loads(request.body)
+        ids = body.get('ids', [])
+        TransactionLog.objects.filter(user=request.user, id__in=ids).update(is_deleted=True)
+        return JsonResponse({'status': 'ok', 'deleted': len(ids)})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_spending_by_day(request):
+    year = int(request.GET.get('year', datetime.now().year))
+    user_txns = TransactionLog.objects.filter(user=request.user, date__year=year)
+    day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    day_data = {i: 0 for i in range(7)}
+    for txn in user_txns:
+        day_data[txn.date.weekday()] += float(txn.amount)
+    result = [{'day': day_names[i], 'total': round(day_data[i], 2)} for i in range(7)]
+    return JsonResponse(result, safe=False)
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_full_pie_chart(request):
+    year = int(request.GET.get('year', datetime.now().year))
+    data = (
+        TransactionLog.objects.filter(user=request.user, date__year=year)
+        .values('category__name')
+        .annotate(total=Sum('amount'))
+        .order_by('-total')
+    )
+    return JsonResponse({
+        'labels': [d['category__name'] for d in data],
+        'values': [float(d['total']) for d in data],
+    })
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_net_worth_trajectory(request):
+    user = request.user
+    income_pillar = FinancialPillar.objects.get(name='INCOME')
+    expense_pillars = FinancialPillar.objects.filter(name__in=['BILLS', 'SUBSCRIPTIONS', 'EXPENSES'])
+    debt_pillar = FinancialPillar.objects.get(name='DEBT')
+    savings_pillar = FinancialPillar.objects.get(name='SAVINGS_INVESTMENTS')
+    now = datetime.now()
+    data = []
+    cumulative = 0
+    for i in range(12):
+        m = now.month - i
+        y = now.year
+        if m <= 0:
+            m += 12
+            y -= 1
+        inc = TransactionLog.objects.filter(user=user, date__year=y, date__month=m, category=income_pillar).aggregate(s=Sum('amount'))['s'] or 0
+        exp = TransactionLog.objects.filter(user=user, date__year=y, date__month=m, category__in=expense_pillars).aggregate(s=Sum('amount'))['s'] or 0
+        debt = TransactionLog.objects.filter(user=user, date__year=y, date__month=m, category=debt_pillar).aggregate(s=Sum('amount'))['s'] or 0
+        sav = TransactionLog.objects.filter(user=user, date__year=y, date__month=m, category=savings_pillar).aggregate(s=Sum('amount'))['s'] or 0
+        cumulative += float(inc) - float(exp)
+        nw = round(cumulative - float(debt) + float(sav), 2)
+        data.insert(0, {'month': f'{y}-{m:02d}', 'net_worth': nw})
+    return JsonResponse(data, safe=False)
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_budget_alerts(request):
+    year = int(request.GET.get('year', datetime.now().year))
+    month = int(request.GET.get('month', datetime.now().month))
+    txns = (
+        TransactionLog.objects.filter(user=request.user, date__year=year, date__month=month)
+        .values('subcategory_id', 'subcategory__name', 'subcategory__pillar__name')
+        .annotate(actual=Sum('amount'))
+    )
+    actual_map = {}
+    for t in txns:
+        if t['subcategory_id']:
+            actual_map[t['subcategory_id']] = float(t['actual'])
+    budgets = MonthlyBudgetTarget.objects.filter(user=request.user, year=year, month=month)
+    alerts = []
+    for b in budgets:
+        actual = actual_map.get(b.subcategory_id, 0)
+        budget = float(b.budgeted_amount)
+        if budget > 0 and actual > budget:
+            alerts.append({
+                'subcategory_name': b.subcategory.name,
+                'pillar': b.subcategory.pillar.name,
+                'budgeted': str(b.budgeted_amount),
+                'actual': str(actual),
+                'overspent': str(actual - budget),
+            })
+    return JsonResponse(alerts, safe=False)
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_monthly_recurring_total(request):
+    today = date.today()
+    total = RecurringTransaction.objects.filter(user=request.user, active=True).aggregate(s=Sum('amount'))['s'] or 0
+    upcoming = RecurringTransaction.objects.filter(user=request.user, active=True, next_due_date__gte=today).count()
+    return JsonResponse({'total': str(total), 'upcoming_count': upcoming})
+
+
+@ajax_login_required
+@require_http_methods(['POST'])
+def api_auto_create_recurring(request):
+    try:
+        body = json.loads(request.body)
+        rt = RecurringTransaction.objects.get(id=body['recurring_id'], user=request.user)
+        from django.db.models import Max
+        existing = TransactionLog.objects.filter(
+            user=request.user, subcategory=rt.subcategory,
+            date__year=datetime.now().year, date__month=datetime.now().month
+        )
+        if existing.exists():
+            return JsonResponse({'status': 'ok', 'message': 'Already created this month'})
+        txn = TransactionLog.objects.create(
+            user=request.user,
+            date=rt.next_due_date,
+            detail=rt.detail or f'Auto: {rt.subcategory.name}',
+            amount=rt.amount,
+            category=rt.subcategory.pillar,
+            subcategory=rt.subcategory,
+        )
+        if rt.interval == 'monthly':
+            import calendar
+            next_date = rt.next_due_date + timedelta(days=30)
+            rt.next_due_date = next_date.replace(day=min(rt.next_due_date.day, calendar.monthrange(next_date.year, next_date.month)[1]))
+        else:
+            rt.next_due_date = rt.next_due_date.replace(year=rt.next_due_date.year + 1)
+        rt.save()
+        return JsonResponse({'status': 'ok', 'transaction_id': txn.id})
+    except RecurringTransaction.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_insights(request):
+    user = request.user
+    year = int(request.GET.get('year', datetime.now().year))
+    income_pillar = FinancialPillar.objects.get(name='INCOME')
+    expense_pillars = FinancialPillar.objects.filter(name__in=['BILLS', 'SUBSCRIPTIONS', 'EXPENSES'])
+
+    all_txns = TransactionLog.objects.filter(user=user, date__year=year)
+    total_count = all_txns.count()
+    total_spent = all_txns.filter(category__in=expense_pillars).aggregate(s=Sum('amount'))['s'] or 0
+    avg_per_txn = round(float(total_spent) / max(total_count, 1), 2)
+
+    top_category = (
+        all_txns.filter(category__in=expense_pillars)
+        .values('category__name')
+        .annotate(total=Sum('amount'))
+        .order_by('-total')
+        .first()
+    )
+
+    day_labels = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    day_totals = {i: 0 for i in range(7)}
+    day_count = {i: 0 for i in range(7)}
+    for txn in all_txns:
+        day_totals[txn.date.weekday()] += float(txn.amount)
+        day_count[txn.date.weekday()] += 1
+
+    busiest_day = max(range(7), key=lambda i: day_totals[i])
+
+    top_detail = (
+        all_txns.filter(category__in=expense_pillars)
+        .values('detail')
+        .annotate(total=Sum('amount'), count=Sum('amount'))
+        .order_by('-total')
+        .first()
+    )
+
+    return JsonResponse({
+        'total_transactions': total_count,
+        'total_spent': str(total_spent),
+        'avg_per_transaction': avg_per_txn,
+        'top_category': top_category['category__name'] if top_category else 'N/A',
+        'top_category_amount': str(top_category['total']) if top_category else '0',
+        'busiest_day': day_labels[busiest_day],
+        'busiest_day_total': round(day_totals[busiest_day], 2),
+        'most_frequent_detail': top_detail['detail'] if top_detail else 'N/A',
+        'most_frequent_detail_count': str(top_detail['count']) if top_detail else '0',
+    })
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_notifications(request):
+    user = request.user
+    today = date.today()
+    notifications = []
+
+    upcoming = RecurringTransaction.objects.filter(user=user, active=True, next_due_date__lte=today + timedelta(days=7))
+    for rt in upcoming:
+        days = (rt.next_due_date - today).days
+        notifications.append({
+            'type': 'bill_reminder',
+            'message': f'{rt.subcategory.name}: ₱{rt.amount} due in {days} day(s)',
+            'date': str(rt.next_due_date),
+            'severity': 'danger' if days < 0 else 'warning',
+        })
+
+    from django.db.models import Max
+    last_txn = TransactionLog.objects.filter(user=user).aggregate(m=Max('date'))['m']
+    if last_txn and (today - last_txn).days > 7:
+        notifications.append({
+            'type': 'inactivity',
+            'message': f'No transactions logged in {(today - last_txn).days} days',
+            'date': str(last_txn),
+            'severity': 'info',
+        })
+
+    budget_alerts_data = json.loads(api_budget_alerts(request).content)
+    if isinstance(budget_alerts_data, list):
+        for ba in budget_alerts_data[:3]:
+            notifications.append({
+                'type': 'budget_alert',
+                'message': f'{ba["subcategory_name"]} overspent by ₱{ba["overspent"]}',
+                'date': str(today),
+                'severity': 'danger',
+            })
+
+    return JsonResponse(notifications, safe=False)
+
+
+@ajax_login_required
+@require_http_methods(['GET'])
+def api_transactions_export_xlsx(request):
+    try:
+        import openpyxl
+        from openpyxl.styles import Font
+    except ImportError:
+        return JsonResponse({'status': 'error', 'message': 'openpyxl not installed'}, status=400)
+
+    year = request.GET.get('year')
+    month = request.GET.get('month')
+    qs = TransactionLog.objects.filter(user=request.user).select_related('category', 'subcategory', 'account')
+    if year:
+        qs = qs.filter(date__year=int(year))
+    if month:
+        qs = qs.filter(date__month=int(month))
+    qs = qs.order_by('date')
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Transactions'
+    headers = ['Date', 'Detail', 'Amount', 'Category', 'Subcategory', 'Payment Mode']
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+
+    for t in qs:
+        ws.append([t.date, t.detail, float(t.amount),
+                   t.category.name if t.category else '',
+                   t.subcategory.name if t.subcategory else '',
+                   t.payment_mode])
+
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="transactions_{year or "all"}_{month or "all"}.xlsx"'
+    wb.save(response)
+    return response
 
 
 @ajax_login_required
