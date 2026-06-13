@@ -1,0 +1,30 @@
+<header class="sticky top-0 z-30 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/80 px-3 md:px-6 py-3">
+  <div class="flex items-center justify-between gap-2">
+    <div class="flex items-center gap-2 md:gap-4 min-w-0">
+      <button @click="toggleMobileSidebar()" class="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-slate-800/50 transition-colors shrink-0">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="w-5 h-5"><path d="M3 5h14M3 10h14M3 15h14"/></svg>
+      </button>
+      <span class="flex items-center gap-2 text-xs text-slate-500 shrink-0">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse-glow"></span>
+        <span class="hidden sm:inline">JARVIS</span>
+      </span>
+      <span class="text-xs text-cyan-600 shrink-0">//</span>
+      <span class="text-xs text-cyan-400 truncate" x-text="pageLabels[activePage] || 'Terminal'"></span>
+      <span class="text-xs md:text-sm font-mono neon-text-cyan hidden sm:inline">
+        NET WORTH: <span x-text="formatCurrency(stats.net_worth)"></span>
+      </span>
+    </div>
+    <div class="flex items-center gap-1 md:gap-3 text-xs shrink-0">
+      <select x-model="year" @change="loadDashboard()" class="input-cyber w-16 md:w-24 text-xs py-1">
+        <template x-for="y in [2024, 2025, 2026, 2027, 2028]">
+          <option :value="y" x-text="y"></option>
+        </template>
+      </select>
+      <select x-model="month" @change="loadDashboard()" class="input-cyber w-20 md:w-28 text-xs py-1">
+        <template x-for="(mName, idx) in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']">
+          <option :value="idx + 1" x-text="mName"></option>
+        </template>
+      </select>
+    </div>
+  </div>
+</header>

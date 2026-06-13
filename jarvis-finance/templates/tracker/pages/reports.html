@@ -1,0 +1,49 @@
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <h2 class="text-lg font-mono neon-text-cyan">📄 REPORTS</h2>
+    <div class="flex gap-3 items-center">
+      <select x-model="reportYear" class="input-cyber text-xs py-1.5 px-3 w-auto">
+        <template x-for="y in [year, year-1, year-2]" :key="y">
+          <option :value="y" x-text="y"></option>
+        </template>
+      </select>
+      <select x-model="reportMonth" class="input-cyber text-xs py-1.5 px-3 w-auto">
+        <template x-for="(m, i) in months" :key="i">
+          <option :value="m" x-text="getMonthName(m)"></option>
+        </template>
+      </select>
+      <button @click="downloadMonthlyReport()" class="btn-cyan text-xs px-4 py-1.5 rounded-lg">
+        📥 Download PDF
+      </button>
+      <a :href="'/api/transactions/export/xlsx/?year=' + reportYear + '&month=' + reportMonth" class="btn-emerald text-xs px-4 py-1.5 rounded-lg inline-flex items-center gap-1" target="_blank">
+        📊 Export XLSX
+      </a>
+    </div>
+  </div>
+
+  <div class="glass-panel p-5" x-show="reportData">
+    <h3 class="text-sm font-mono text-slate-400 mb-4">Monthly Summary</h3>
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div class="bg-slate-800/40 rounded-lg p-3 border border-slate-700/50">
+        <p class="text-[10px] text-slate-500 uppercase">Income</p>
+        <p class="text-lg font-bold neon-text-emerald" x-text="formatCurrency(reportData?.total_income || 0)"></p>
+      </div>
+      <div class="bg-slate-800/40 rounded-lg p-3 border border-slate-700/50">
+        <p class="text-[10px] text-slate-500 uppercase">Expenses</p>
+        <p class="text-lg font-bold neon-text-rose" x-text="formatCurrency(reportData?.total_expenses || 0)"></p>
+      </div>
+      <div class="bg-slate-800/40 rounded-lg p-3 border border-slate-700/50">
+        <p class="text-[10px] text-slate-500 uppercase">Debt</p>
+        <p class="text-lg font-bold text-amber-400" x-text="formatCurrency(reportData?.total_debt || 0)"></p>
+      </div>
+      <div class="bg-slate-800/40 rounded-lg p-3 border border-slate-700/50">
+        <p class="text-[10px] text-slate-500 uppercase">Savings</p>
+        <p class="text-lg font-bold text-blue-400" x-text="formatCurrency(reportData?.total_savings || 0)"></p>
+      </div>
+      <div class="bg-slate-800/40 rounded-lg p-3 border border-slate-700/50">
+        <p class="text-[10px] text-slate-500 uppercase">Net</p>
+        <p class="text-lg font-bold neon-text-cyan" x-text="formatCurrency(reportData?.net || 0)"></p>
+      </div>
+    </div>
+  </div>
+</div>

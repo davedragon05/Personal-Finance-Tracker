@@ -1,0 +1,43 @@
+<div class="space-y-6">
+  <h2 class="text-lg font-mono neon-text-purple">🔍 INSIGHTS</h2>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Total Transactions</p>
+      <p class="text-2xl font-bold text-slate-200" x-text="insights?.total_transactions || 0"></p>
+    </div>
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Total Spent (Year)</p>
+      <p class="text-2xl font-bold neon-text-rose" x-text="formatCurrency(insights?.total_spent || 0)"></p>
+    </div>
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Avg Per Transaction</p>
+      <p class="text-2xl font-bold text-amber-400" x-text="'₱' + numberWithCommas(insights?.avg_per_transaction || 0)"></p>
+    </div>
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Top Category</p>
+      <p class="text-lg font-bold neon-text-emerald" x-text="insights?.top_category || 'N/A'"></p>
+      <p class="text-xs text-slate-500" x-text="'₱' + numberWithCommas(insights?.top_category_amount || 0)"></p>
+    </div>
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Busiest Spending Day</p>
+      <p class="text-lg font-bold text-cyan-400" x-text="insights?.busiest_day || 'N/A'"></p>
+      <p class="text-xs text-slate-500" x-text="'₱' + numberWithCommas(insights?.busiest_day_total || 0)"></p>
+    </div>
+    <div class="glass-card">
+      <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Most Frequent Detail</p>
+      <p class="text-lg font-bold text-slate-200 truncate" x-text="insights?.most_frequent_detail || 'N/A'"></p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="glass-panel p-5">
+      <h3 class="text-sm font-mono text-slate-400 mb-4">📊 Spending by Day of Week</h3>
+      <canvas id="chart-day-of-week" height="250"></canvas>
+    </div>
+    <div class="glass-panel p-5">
+      <h3 class="text-sm font-mono text-slate-400 mb-4">🍩 Full Category Breakdown</h3>
+      <canvas id="chart-full-pie" height="250"></canvas>
+    </div>
+  </div>
+</div>
