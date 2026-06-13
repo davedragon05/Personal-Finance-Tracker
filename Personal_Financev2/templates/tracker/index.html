@@ -21,13 +21,15 @@
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M10 16V4M5 9l5-5 5 5"/></svg>
   </button>
 
+  <div x-show="sidebarOpen" class="md:hidden fixed inset-0 z-30 bg-slate-950/60 backdrop-blur-sm" @click="closeMobileSidebar()"></div>
+
   <div class="flex h-screen overflow-hidden">
     {% include 'tracker/sidebar.html' %}
 
-    <div class="flex-1 flex flex-col overflow-hidden transition-all duration-300" :class="sidebarCollapsed ? 'ml-16' : 'ml-64'">
+    <div class="flex-1 flex flex-col overflow-hidden transition-all duration-300" :class="sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'">
       {% include 'tracker/header.html' %}
 
-      <main class="flex-1 overflow-y-auto p-6 space-y-6">
+      <main class="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 md:space-y-6">
         <div x-show="activePage === 'dashboard'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0">
           {% include 'tracker/pages/dashboard.html' %}
         </div>

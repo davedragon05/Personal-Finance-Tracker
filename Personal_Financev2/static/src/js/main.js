@@ -74,6 +74,7 @@ document.addEventListener('alpine:init', () => {
     year: new Date().getFullYear(),
     month: new Date().getMonth() + 1,
     sidebarCollapsed: localStorage.getItem('jarvis_sidebar') === 'collapsed',
+    sidebarOpen: false,
     loading: 0,
     pageLabels: {
       dashboard: 'Mission Control',
@@ -757,6 +758,13 @@ document.addEventListener('alpine:init', () => {
         this.showToast('Import failed: ' + e.message, 'error');
       }
       event.target.value = '';
+    },
+
+    toggleMobileSidebar() {
+      this.sidebarOpen = !this.sidebarOpen;
+    },
+    closeMobileSidebar() {
+      this.sidebarOpen = false;
     },
 
     loadPageData(page) {

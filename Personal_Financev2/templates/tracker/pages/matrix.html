@@ -35,7 +35,7 @@
               <td class="sticky left-0 bg-slate-900 z-10 px-4 py-3" x-show="idx === 0" :rowspan="subcategories.filter(s => s.pillar === p.id).length">
                 <span class="pillar-badge text-[10px]" :class="p.name" x-text="p.display"></span>
               </td>
-              <td class="px-4 py-3 text-xs text-slate-400" x-text="sub.name"></td>
+              <td class="sticky left-0 bg-slate-900 z-10 px-4 py-3 text-xs text-slate-400" x-text="sub.name" :style="idx === 0 ? 'left: 120px' : 'left: 0'"></td>
               <template x-for="m in months" :key="m">
                 <td class="text-center px-2 py-3 align-top">
                   <template x-if="matrixActuals.find(a => a.subcategory_id === sub.id && a.month === m)">

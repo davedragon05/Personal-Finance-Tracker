@@ -1,5 +1,10 @@
 <aside class="fixed left-0 top-0 h-full z-40 flex flex-col transition-all duration-300 bg-slate-900/90 backdrop-blur-xl border-r border-slate-800/80"
-       :class="sidebarCollapsed ? 'w-16' : 'w-64'">
+       :class="[
+         sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+         'md:translate-x-0',
+         sidebarCollapsed ? 'w-16' : 'w-64'
+       ]">
+
   <div class="p-5 border-b border-slate-800/80 flex items-center" :class="sidebarCollapsed ? 'justify-center' : 'gap-3'">
     <div class="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/50 flex items-center justify-center shrink-0">
       <span class="text-cyan-400 text-sm font-bold">J</span>
@@ -12,7 +17,7 @@
 
   <nav class="flex-1 p-3 space-y-1 overflow-y-auto overflow-x-hidden"
        :class="sidebarCollapsed ? 'flex flex-col items-center' : ''">
-    <a href="#" class="sidebar-link" :class="{ 'active': activePage === 'dashboard' }" @click.prevent="navigate('dashboard')" :title="sidebarCollapsed ? 'Mission Control' : ''">
+    <a href="#" class="sidebar-link" :class="{ 'active': activePage === 'dashboard' }" @click.prevent="navigate('dashboard'); closeMobileSidebar()" :title="sidebarCollapsed ? 'Mission Control' : ''">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" class="w-5 h-5 shrink-0"><rect x="2" y="2" width="7" height="7" rx="1"/><rect x="11" y="2" width="7" height="7" rx="1"/><rect x="2" y="11" width="7" height="7" rx="1"/><rect x="11" y="11" width="7" height="7" rx="1"/></svg>
       <span class="text-sm whitespace-nowrap" x-show="!sidebarCollapsed" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">Mission Control</span>
       <span class="ml-auto text-[9px] text-slate-700" x-show="!sidebarCollapsed">⌘1</span>

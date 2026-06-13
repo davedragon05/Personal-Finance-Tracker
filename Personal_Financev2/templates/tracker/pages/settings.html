@@ -30,13 +30,13 @@
     </form>
 
     <div class="flex flex-wrap gap-3 mb-4">
-      <select x-model="settingsFilter.pillar_id" class="input-cyber text-xs py-2 w-44">
+      <select x-model="settingsFilter.pillar_id" class="input-cyber text-xs py-2 w-full sm:w-44">
         <option value="">All Pillars</option>
         <template x-for="p in pillars" :key="p.id">
           <option :value="p.id" x-text="p.display"></option>
         </template>
       </select>
-      <input type="text" x-model="settingsFilter.search" class="input-cyber text-xs py-2 w-60" placeholder="Search sub-categories…">
+      <input type="text" x-model="settingsFilter.search" class="input-cyber text-xs py-2 w-full sm:w-60" placeholder="Search sub-categories…">
       <span class="text-[10px] text-slate-600 self-center">
         Showing <span x-text="filteredSubcategories().length"></span> of <span x-text="subcategories.length"></span>
       </span>

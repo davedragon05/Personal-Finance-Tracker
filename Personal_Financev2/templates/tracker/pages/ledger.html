@@ -8,12 +8,12 @@
 
   <div class="glass-panel p-5">
     <div class="flex gap-3 mb-4 flex-wrap">
-      <select x-model="filter.year" @change="txnPage = 1; loadTransactions()" class="input-cyber w-28 text-xs py-1.5">
+      <select x-model="filter.year" @change="txnPage = 1; loadTransactions()" class="input-cyber w-20 sm:w-28 text-xs py-1.5">
         <template x-for="y in [2024,2025,2026,2027,2028]">
           <option :value="y" x-text="y"></option>
         </template>
       </select>
-      <select x-model="filter.month" @change="txnPage = 1; loadTransactions()" class="input-cyber w-32 text-xs py-1.5">
+      <select x-model="filter.month" @change="txnPage = 1; loadTransactions()" class="input-cyber w-24 sm:w-32 text-xs py-1.5">
         <template x-for="(mName, idx) in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']">
           <option :value="idx+1" x-text="mName"></option>
         </template>
@@ -77,19 +77,19 @@
                   :class="txn.debt_outstanding_balance !== null ? (txn.category === 'INCOME' ? 'text-emerald-500' : 'text-rose-500') : 'text-slate-600'"
                   x-text="txn.debt_outstanding_balance !== null ? '₱' + numberWithCommas(txn.debt_outstanding_balance) : '—'"></td>
               <td>
-                <div class="flex gap-2">
+                <div class="flex gap-1 md:gap-2">
                   <button @click="cloneTransaction(txn)"
-                          class="text-xs text-slate-600 hover:text-cyan-400 transition-colors">
+                          class="text-xs text-slate-600 hover:text-cyan-400 transition-colors p-1.5 md:p-0">
                     ⧉
                   </button>
                   <button x-show="!txn.debt_history_id && txn.category !== 'SAVINGS_INVESTMENTS'"
                           @click="editTxn = { id: txn.id, date: txn.date, detail: txn.detail, amount: txn.amount, category_id: txn.category_id, subcategory_id: txn.subcategory_id, payment_mode: txn.payment_mode || '' }; loadSubcategories(txn.category_id); openModal('edit-txn-modal')"
-                          class="text-xs text-slate-600 hover:text-amber-400 transition-colors">
+                          class="text-xs text-slate-600 hover:text-amber-400 transition-colors p-1.5 md:p-0">
                     ✎
                   </button>
                   <button x-show="!txn.debt_history_id && txn.category !== 'SAVINGS_INVESTMENTS'"
                           @click="deleteTransaction(txn.id)"
-                          class="text-xs text-slate-600 hover:text-rose-400 transition-colors">
+                          class="text-xs text-slate-600 hover:text-rose-400 transition-colors p-1.5 md:p-0">
                     ✕
                   </button>
                 </div>
